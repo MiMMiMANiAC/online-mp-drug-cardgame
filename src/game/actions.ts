@@ -951,8 +951,7 @@ function damageTagged(board: BoardCard[], damage: number) {
 function healTarget(board: BoardCard[], targetId: string | undefined, amount: number) {
   return board.map((boardCard) => {
     if (boardCard.instanceId !== targetId) return boardCard;
-    const maxHealth = cardById.get(boardCard.cardId)?.stability ?? boardCard.health;
-    return { ...boardCard, health: Math.min(maxHealth, boardCard.health + amount) };
+    return { ...boardCard, health: boardCard.health + amount };
   });
 }
 

@@ -583,7 +583,7 @@ let firstAidPersonState = {
   ],
 };
 firstAidPersonState = playCard(firstAidPersonState, "neutral_erste_hilfe", "hurt-person");
-assert.equal(firstAidPersonState.playerBoard[0].health, 4, "Erste Hilfe muss eigene Personen bis zu ihrem Max-HP heilen.");
+assert.equal(firstAidPersonState.playerBoard[0].health, 5, "Erste Hilfe darf eigene Personen ueber ihre gedruckten HP hinaus heilen.");
 
 let therapyState = {
   ...initialGameState,

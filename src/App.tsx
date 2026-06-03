@@ -66,6 +66,10 @@ export function App() {
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
   const [soundVolume, setSoundVolume] = useState(0.8);
+  const [updateStatus, setUpdateStatus] = useState<DesktopUpdateStatus>({
+    message: "Updater wartet.",
+    state: "idle",
+  });
   const [actionPopup, setActionPopup] = useState<{ title: string; text: string; visible: boolean } | null>(null);
   const [diagnosticPopup, setDiagnosticPopup] = useState<{ title: string; text: string; visible: boolean } | null>(null);
   const [turnBanner, setTurnBanner] = useState<{ message: string; tone: TurnBannerTone; visible: boolean }>({
@@ -108,6 +112,13 @@ export function App() {
   useEffect(() => {
     localStorage.setItem("nebenwirkungen-friends", JSON.stringify(friends));
   }, [friends]);
+
+  useEffect(() => {
+    const unsubscribe = window.nebenwirkungenDesktop?.onUpdateStatus((status) => {
+      setUpdateStatus(status);
+    });
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     const unsubscribe = window.nebenwirkungenDesktop?.onEscape(() => {
@@ -638,6 +649,19 @@ export function App() {
               <button type="button" onClick={toggleFullscreen}>
                 Vollbild wechseln
               </button>
+              <div className="update-panel">
+                <strong>Updates</strong>
+                <span>{updateStatus.message}</span>
+                {updateStatus.state === "ready" ? (
+                  <button type="button" onClick={() => window.nebenwirkungenDesktop?.installUpdate()}>
+                    Update installieren
+                  </button>
+                ) : (
+                  <button type="button" onClick={() => window.nebenwirkungenDesktop?.checkForUpdates()}>
+                    Nach Updates suchen
+                  </button>
+                )}
+              </div>
               <button type="button" onClick={() => setOptionsOpen(false)}>
                 Zurueck
               </button>
@@ -664,6 +688,20 @@ export function App() {
           <small>ESC oeffnet und schliesst dieses Menue.</small>
         </div>
       </section>
+    );
+  }
+
+  function renderUpdateNotice() {
+    if (updateStatus.state !== "ready" && updateStatus.state !== "downloading" && updateStatus.state !== "error") return null;
+    return (
+      <div className={`update-notice is-${updateStatus.state}`}>
+        <span>{updateStatus.message}</span>
+        {updateStatus.state === "ready" ? (
+          <button type="button" onClick={() => window.nebenwirkungenDesktop?.installUpdate()}>
+            Neustart
+          </button>
+        ) : null}
+      </div>
     );
   }
 
@@ -697,6 +735,7 @@ export function App() {
           onSelectFaction={selectFaction}
           onStart={startMatch}
         />
+        {renderUpdateNotice()}
         {renderPauseMenu()}
       </>
     );
@@ -712,6 +751,7 @@ export function App() {
           onConfirm={confirmStartingHand}
           onToggleCard={toggleMulliganCard}
         />
+        {renderUpdateNotice()}
         {renderPauseMenu()}
       </>
     );
@@ -720,6 +760,7 @@ export function App() {
   return (
     <main className="app-shell">
       <TurnBanner message={turnBanner.message} tone={turnBanner.tone} visible={turnBanner.visible} />
+      {renderUpdateNotice()}
       {actionPopup ? (
         <div className={`action-popup ${actionPopup.visible ? "is-visible" : ""}`}>
           <strong>{actionPopup.title}</strong>

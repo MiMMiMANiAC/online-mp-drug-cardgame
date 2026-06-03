@@ -4942,6 +4942,65 @@ body {
   font-size: 11px;
 }
 
+.update-panel {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(114, 220, 204, 0.34);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(3, 16, 16, 0.56);
+  text-align: left;
+}
+
+.update-panel strong {
+  color: var(--mint);
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.update-panel span {
+  color: var(--paper);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.update-notice {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 240;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(360px, calc(100vw - 36px));
+  border: 1px solid rgba(114, 220, 204, 0.62);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: var(--paper);
+  background: rgba(5, 7, 9, 0.92);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5), 0 0 24px rgba(114, 220, 204, 0.16);
+}
+
+.update-notice.is-error {
+  border-color: rgba(237, 83, 78, 0.68);
+}
+
+.update-notice span {
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.update-notice button {
+  border: 1px solid rgba(242, 197, 107, 0.6);
+  border-radius: 7px;
+  padding: 7px 10px;
+  color: #0c0b08;
+  background: linear-gradient(180deg, #ffe28a, #d99021);
+  font-weight: 950;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
 /* Fullscreen board pass: board reaches the top, status lives on the table, actions sit in the free lower-right area. */
 .app-shell .game-frame {
   padding-top: 0;

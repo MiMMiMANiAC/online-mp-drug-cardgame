@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.0",
+    "electron-updater": "^6.8.3",
     "pixi.js": "^8.8.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -41,6 +42,14 @@
     "directories": {
       "output": "desktop/release"
     },
+    "artifactName": "${productName}-Setup-${version}.${ext}",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "MiMMiMANiAC",
+        "repo": "online-mp-drug-cardgame"
+      }
+    ],
     "files": [
       "dist/**/*",
       "desktop/main.cjs",
