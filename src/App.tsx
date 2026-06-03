@@ -85,7 +85,7 @@ export function App() {
     ? state.activePlayer === "player" && state.hand.includes(selectedCard.id) && canPlayCard(selectedCard, state.player)
     : false;
   const selectedTarget = selectedCardId ? targetForCard(selectedCardId) : null;
-  const heroPowerNeedsTarget = false;
+  const heroPowerNeedsTarget = state.playerFaction === "awareness";
   const canUseHeroPower = state.activePlayer === "player" && !state.winner && !state.player.heroPowerUsed && state.player.cash >= 2;
   const playerSeat = onlineMode ? onlineOwnName || playerName || (onlineRole === "opponent" ? "Spieler 2" : "Spieler 1") : "Spieler 1";
   const opponentSeat = onlineMode ? onlineOpponentName || (onlineRole === "opponent" ? "Spieler 1" : "Spieler 2") : "Spieler 2";

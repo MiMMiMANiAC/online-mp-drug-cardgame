@@ -16,7 +16,7 @@ export const factions: FactionDefinition[] = [
     role: "Schutz, Stabilitaet, Risikosenkung",
     heroPower: {
       name: "Stabilisieren",
-      text: "2 Cash: Heile 2 Gesundheit und 2 Stabilitaet.",
+      text: "2 Cash: Waehle dich oder eine eigene Person. Held: +2 Gesundheit und +2 Stabilitaet. Person: +2 HP.",
     },
   },
   {

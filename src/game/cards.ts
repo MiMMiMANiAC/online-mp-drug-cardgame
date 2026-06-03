@@ -185,7 +185,7 @@ export const cards: CardDefinition[] = [
     tags: ["harm-reduction"],
     cost: 1,
     image: awarenessImage("awareness_wasser"),
-    effect: "Heile 2 Stabilitaet. Reduziere Rausch um 1.",
+    effect: "Waehle dich oder eine eigene Person. Held: +2 Stabilitaet. Person: +2 HP. Reduziere Rausch um 1.",
     flavor: "Keine Pose, nur Hilfe.",
   },
   {
@@ -490,7 +490,7 @@ export const cards: CardDefinition[] = [
     tags: ["harm-reduction", "neutral"],
     cost: 1,
     image: neutralImage("neutral_wasserflasche"),
-    effect: "Heile 1 Stabilitaet. Reduziere Rausch um 1.",
+    effect: "Waehle dich oder eine eigene Person. Held: +1 Stabilitaet. Person: +1 HP. Reduziere Rausch um 1.",
     flavor: "Das kleinste gute Zeichen.",
   },
   {
@@ -528,7 +528,7 @@ export const cards: CardDefinition[] = [
     tags: ["harm-reduction", "neutral"],
     cost: 2,
     image: neutralImage("neutral_erste_hilfe"),
-    effect: "Heile 4 Gesundheit.",
+    effect: "Waehle dich oder eine eigene Person. Held: +4 Gesundheit. Person: +4 HP.",
     flavor: "Nicht elegant. Wirksam.",
   },
   {

@@ -1,5 +1,7 @@
 import type { CardDefinition, CardTarget, PlayerStats } from "./types";
 
+export const SELF_HERO_TARGET = "__self_hero";
+
 export function canPlayCard(card: CardDefinition, stats: PlayerStats) {
   return stats.cash >= card.cost;
 }
@@ -25,6 +27,11 @@ export function targetForCard(cardId: string): CardTarget | null {
     "raver_durchballern",
     "neutral_taxi_nach_hause",
   ]);
+  const ownCharacterTargets = new Set([
+    "awareness_wasser",
+    "neutral_wasserflasche",
+    "neutral_erste_hilfe",
+  ]);
   const enemyPersonTargets = new Set([
     "raver_druckwelle",
     "raver_bassdruck",
@@ -39,6 +46,7 @@ export function targetForCard(cardId: string): CardTarget | null {
   ]);
 
   if (ownPersonTargets.has(cardId)) return "ownPerson";
+  if (ownCharacterTargets.has(cardId)) return "ownCharacter";
   if (enemyPersonTargets.has(cardId)) return "enemyPerson";
   if (anyPersonTargets.has(cardId)) return "anyPerson";
   return null;
@@ -46,6 +54,7 @@ export function targetForCard(cardId: string): CardTarget | null {
 
 export function targetLabel(target: CardTarget) {
   if (target === "ownPerson") return "Eigene Person waehlen";
+  if (target === "ownCharacter") return "Dich oder eigene Person waehlen";
   if (target === "enemyPerson") return "Gegnerische Person waehlen";
   return "Beliebige Person waehlen";
 }

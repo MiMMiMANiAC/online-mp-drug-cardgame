@@ -1,7 +1,7 @@
 import { useState, type DragEvent } from "react";
 import { cardById } from "../game/cards";
 import { playableFactions } from "../game/factions";
-import { canPlayCard, dangerLabel, rauschLabel, targetForCard, targetLabel } from "../game/rules";
+import { SELF_HERO_TARGET, canPlayCard, dangerLabel, rauschLabel, targetForCard, targetLabel } from "../game/rules";
 import type { BoardCard, CardDefinition, CardTarget, GameState, PlayerStats } from "../game/types";
 
 interface GameBoardProps {
@@ -54,7 +54,7 @@ export function GameBoard({
   const centerCard = inspectedCard ?? (selectedCard ? { card: selectedCard } : null);
   const heroPower = playableFactions.find((faction) => faction.id === state.playerFaction)?.heroPower;
   const targetHint = selectedHeroPower
-    ? "Waehle eine eigene Person fuer den Heldenskill"
+    ? "Waehle dich oder eine eigene Person fuer den Heldenskill"
     : selectedTarget
       ? targetLabel(selectedTarget)
       : selectedAttackerId
@@ -80,8 +80,8 @@ export function GameBoard({
         </div>
 
         <HeroPanel
-          isTarget={Boolean(selectedAttackerId)}
-          onClick={selectedAttackerId ? onAttackOpponentHero : undefined}
+          isTarget={Boolean(selectedAttackerId) && state.opponentBoard.length === 0}
+          onClick={selectedAttackerId && state.opponentBoard.length === 0 ? onAttackOpponentHero : undefined}
           side="opponent"
           stats={state.opponent}
           title={opponentTitle}
@@ -133,7 +133,19 @@ export function GameBoard({
           selectedTarget={selectedTarget}
         />
 
-        <HeroPanel side="player" stats={state.player} title={playerTitle} />
+        <HeroPanel
+          isTarget={selectedHeroPower || selectedTarget === "ownCharacter"}
+          onClick={
+            selectedHeroPower
+              ? () => onUseHeroPower(SELF_HERO_TARGET)
+              : selectedTarget === "ownCharacter"
+                ? () => onPlaySelectedOnTarget(SELF_HERO_TARGET)
+                : undefined
+          }
+          side="player"
+          stats={state.player}
+          title={playerTitle}
+        />
 
         <div className="board-actions">
           <SelectedCardAction
@@ -280,6 +292,7 @@ function BoardRow({
           Boolean(boardCard) &&
           ((selectedTarget === "ownPerson" && owner === "player") ||
             (selectedTarget === "enemyPerson" && owner === "opponent") ||
+            (selectedTarget === "ownCharacter" && owner === "player") ||
             selectedTarget === "anyPerson");
         const isHeroPowerTarget = Boolean(boardCard) && selectedHeroPower && owner === "player";
 
@@ -490,6 +503,7 @@ function canDropOnBoardCard(cardId: string, owner: "player" | "opponent") {
   const target = targetForCard(cardId);
   if (target === "anyPerson") return true;
   if (target === "ownPerson") return owner === "player";
+  if (target === "ownCharacter") return owner === "player";
   if (target === "enemyPerson") return owner === "opponent";
   return false;
 }

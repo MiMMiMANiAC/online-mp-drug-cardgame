@@ -11,6 +11,7 @@ import {
 } from "../src/game/actions";
 import { cardById, cards } from "../src/game/cards";
 import { buildMatchReport } from "../src/game/report";
+import { SELF_HERO_TARGET } from "../src/game/rules";
 import {
   confirmMulligan,
   confirmMulliganForSide,
@@ -170,9 +171,28 @@ let awarenessHeroPowerState = {
   playerFaction: "awareness" as const,
   player: { ...initialGameState.player, cash: 3, health: 24, stability: 25, rausch: 2, fahndungsdruck: 5, abhaengigkeit: 1 },
 };
-awarenessHeroPowerState = useHeroPower(awarenessHeroPowerState);
+awarenessHeroPowerState = useHeroPower(awarenessHeroPowerState, SELF_HERO_TARGET);
 assert.equal(awarenessHeroPowerState.player.health, 26, "Awareness-Heldenskill muss Gesundheit heilen.");
 assert.equal(awarenessHeroPowerState.player.stability, 27, "Awareness-Heldenskill muss Stabilitaet heilen.");
+
+let awarenessPersonHealState = {
+  ...initialGameState,
+  playerFaction: "awareness" as const,
+  player: { ...initialGameState.player, cash: 3 },
+  playerBoard: [
+    {
+      instanceId: "wounded-helper",
+      cardId: "awareness_krisenhelferin",
+      owner: "player" as const,
+      attack: 1,
+      health: 1,
+      exhausted: false,
+      canAttack: true,
+    },
+  ],
+};
+awarenessPersonHealState = useHeroPower(awarenessPersonHealState, "wounded-helper");
+assert.equal(awarenessPersonHealState.playerBoard[0].health, 3, "Awareness-Heldenskill muss eigene Personen gezielt heilen.");
 
 let dealerHeroPowerState = {
   ...initialGameState,
@@ -399,6 +419,36 @@ opponentEmergencyState = emergencyActionForSide(opponentEmergencyState, "opponen
 assert.equal(opponentEmergencyState.opponent.fahndungsdruck, 3, "Multiplayer-Abtauchen muss fuer Spieler 2 Fahndung reduzieren.");
 assert.equal(opponentEmergencyState.activePlayer, "player", "Multiplayer-Abtauchen muss den Zug zu Spieler 1 geben.");
 
+const blockedHeroAttackState = {
+  ...initialGameState,
+  opponent: { ...initialGameState.opponent, health: 30 },
+  playerBoard: [
+    {
+      instanceId: "blocked-attacker",
+      cardId: "raver_clubgaenger",
+      owner: "player" as const,
+      attack: 2,
+      health: 2,
+      exhausted: false,
+      canAttack: true,
+    },
+  ],
+  opponentBoard: [
+    {
+      instanceId: "board-guard",
+      cardId: "neutral_szenekenner",
+      owner: "opponent" as const,
+      attack: 2,
+      health: 4,
+      exhausted: false,
+      canAttack: true,
+    },
+  ],
+};
+const blockedHeroAttack = attackOpponentHero(blockedHeroAttackState, "blocked-attacker");
+assert.equal(blockedHeroAttack.opponent.health, 30, "Held darf nicht angegriffen werden, solange gegnerische Personen liegen.");
+assert.ok(blockedHeroAttack.events[0].text.includes("gegnerischen Personen"), "Blockierter Heldenangriff muss erklaert werden.");
+
 const winningState = {
   ...initialGameState,
   opponent: { ...initialGameState.opponent, health: 1 },
@@ -452,6 +502,41 @@ const afterCombat = attackOpponentMinion(combatState, "attacker", "target");
 assert.equal(afterCombat.playerBoard.length, 0, "Rueckschaden muss eigene tote Karte entfernen.");
 assert.equal(afterCombat.opponentBoard.length, 0, "Angriffsschaden muss gegnerische tote Karte entfernen.");
 
+let botGuardState = {
+  ...initialGameState,
+  hand: [],
+  deck: ["neutral_wasserflasche"],
+  opponentHand: [],
+  opponentDeck: [],
+  player: { ...initialGameState.player, health: 30 },
+  opponent: { ...initialGameState.opponent, maxCash: 4, cash: 4 },
+  playerBoard: [
+    {
+      instanceId: "player-guard",
+      cardId: "neutral_verpeilter_gast",
+      owner: "player" as const,
+      attack: 1,
+      health: 1,
+      exhausted: false,
+      canAttack: true,
+    },
+  ],
+  opponentBoard: [
+    {
+      instanceId: "bot-attacker",
+      cardId: "raver_clubgaenger",
+      owner: "opponent" as const,
+      attack: 1,
+      health: 2,
+      exhausted: false,
+      canAttack: true,
+    },
+  ],
+};
+botGuardState = endTurn(botGuardState);
+assert.equal(botGuardState.player.health, 30, "Bot muss zuerst Personen angreifen, nicht den Helden.");
+assert.equal(botGuardState.playerBoard.length, 0, "Bot-Angriff muss die erste gegnerische Person treffen.");
+
 let cashState = {
   ...initialGameState,
   hand: ["dealer_kleiner_lauf"],
@@ -477,9 +562,28 @@ let bottleState = {
   hand: ["neutral_wasserflasche"],
   player: { ...initialGameState.player, cash: 2, stability: 24, rausch: 1 },
 };
-bottleState = playCard(bottleState, "neutral_wasserflasche");
+bottleState = playCard(bottleState, "neutral_wasserflasche", SELF_HERO_TARGET);
 assert.equal(bottleState.player.stability, 25, "Wasserflasche muss immer 1 Stabilitaet heilen.");
 assert.equal(bottleState.player.rausch, 0, "Wasserflasche muss Rausch um 1 reduzieren.");
+
+let firstAidPersonState = {
+  ...initialGameState,
+  hand: ["neutral_erste_hilfe"],
+  player: { ...initialGameState.player, cash: 2 },
+  playerBoard: [
+    {
+      instanceId: "hurt-person",
+      cardId: "neutral_szenekenner",
+      owner: "player" as const,
+      attack: 2,
+      health: 1,
+      exhausted: false,
+      canAttack: true,
+    },
+  ],
+};
+firstAidPersonState = playCard(firstAidPersonState, "neutral_erste_hilfe", "hurt-person");
+assert.equal(firstAidPersonState.playerBoard[0].health, 4, "Erste Hilfe muss eigene Personen bis zu ihrem Max-HP heilen.");
 
 let therapyState = {
   ...initialGameState,

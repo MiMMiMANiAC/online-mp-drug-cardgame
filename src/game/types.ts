@@ -17,7 +17,7 @@ export type FactionId = "raver" | "awareness" | "dealer" | "psychonauten" | "jun
 export type CardFaction = FactionId | "neutral";
 
 export type GamePhase = "deckbuilding" | "classSelect" | "mulligan" | "playing" | "gameover";
-export type CardTarget = "ownPerson" | "enemyPerson" | "anyPerson";
+export type CardTarget = "ownPerson" | "enemyPerson" | "anyPerson" | "ownCharacter";
 
 export interface FactionDefinition {
   id: FactionId;

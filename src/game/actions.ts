@@ -1,5 +1,5 @@
 import { cardById } from "./cards";
-import { targetForCard } from "./rules";
+import { SELF_HERO_TARGET, targetForCard } from "./rules";
 import type { BoardCard, GameEvent, GameState, PlayerStats } from "./types";
 
 let nextId = 1;
@@ -70,17 +70,25 @@ export function useHeroPowerForSide(state: GameState, side: Side, targetId?: str
   }
 
   if (faction === "awareness") {
-    next = {
-      ...next,
-      [selfKey]: {
-        ...next[selfKey],
-        health: Math.min(30, next[selfKey].health + 2),
-        stability: Math.min(30, next[selfKey].stability + 2),
-      },
-    };
+    if (!targetId) return addEvent(state, "Waehle dich oder eine eigene Person als Ziel.", "warning");
+    if (targetId === SELF_HERO_TARGET) {
+      next = {
+        ...next,
+        [selfKey]: {
+          ...next[selfKey],
+          health: Math.min(30, next[selfKey].health + 2),
+          stability: Math.min(30, next[selfKey].stability + 2),
+        },
+      };
+    } else {
+      if (!next[ownBoardKey].some((boardCard) => boardCard.instanceId === targetId)) {
+        return addEvent(state, "Waehle dich oder eine eigene Person als Ziel.", "warning");
+      }
+      next = { ...next, [ownBoardKey]: healTarget(next[ownBoardKey], targetId, 2) };
+    }
     return checkWinner(
       addEvent(next, "Heldenskill Stabilisieren: +2 Gesundheit, +2 Stabilitaet.", "recovery", {
-        details: "Awareness gewinnt Zeit: heilt Gesundheit und Stabilitaet, ohne Risiko zu erhoehen.",
+        details: "Awareness gewinnt Zeit: heilt deinen Helden oder stabilisiert eine eigene Person.",
       }),
     );
   }
@@ -140,6 +148,13 @@ export function playCardForSide(state: GameState, side: Side, cardId: string, ta
   if (target === "ownPerson" && !state[ownBoardKey].some((boardCard) => boardCard.instanceId === targetId)) {
     return addEvent(state, "Waehle eine eigene Person als Ziel.", "warning");
   }
+  if (
+    target === "ownCharacter" &&
+    targetId !== SELF_HERO_TARGET &&
+    !state[ownBoardKey].some((boardCard) => boardCard.instanceId === targetId)
+  ) {
+    return addEvent(state, "Waehle dich oder eine eigene Person als Ziel.", "warning");
+  }
   if (target === "enemyPerson" && !state[enemyBoardKey].some((boardCard) => boardCard.instanceId === targetId)) {
     return addEvent(state, "Waehle eine gegnerische Person als Ziel.", "warning");
   }
@@ -179,10 +194,13 @@ export function attackOpponentHero(state: GameState, instanceId: string): GameSt
 export function attackHeroForSide(state: GameState, side: Side, instanceId: string): GameState {
   if (state.winner) return state;
   if (state.activePlayer !== side) return addEvent(state, "Du bist nicht am Zug.", "warning");
-  const { enemyKey, ownBoardKey } = keysFor(side);
+  const { enemyKey, ownBoardKey, enemyBoardKey } = keysFor(side);
   const attacker = state[ownBoardKey].find((card) => card.instanceId === instanceId);
   if (!attacker) return state;
   if (!attacker.canAttack || attacker.exhausted) return addEvent(state, "Diese Person kann noch nicht angreifen.", "warning");
+  if (state[enemyBoardKey].length > 0) {
+    return addEvent(state, "Erst alle gegnerischen Personen beseitigen, bevor der Held angegriffen werden kann.", "warning");
+  }
 
   const definition = cardById.get(attacker.cardId);
   let next: GameState = {
@@ -568,18 +586,13 @@ function opponentPlayOneCard(state: GameState): GameState {
 
 function opponentAttack(state: GameState): GameState {
   let next = state;
-  for (const attacker of next.opponentBoard) {
-    if (!attacker.canAttack || attacker.exhausted) continue;
-    next = {
-      ...next,
-      player: { ...next.player, health: Math.max(0, next.player.health - attacker.attack) },
-      opponentBoard: next.opponentBoard.map((card) =>
-        card.instanceId === attacker.instanceId ? { ...card, exhausted: true, canAttack: false } : card,
-      ),
-    };
-    next = applyAttackTriggers(next, attacker.cardId, "opponent");
-    const card = cardById.get(attacker.cardId);
-    next = addEvent(next, `Gegner: ${card?.name ?? "Person"} greift dich fuer ${attacker.attack} Schaden an.`, "danger");
+  for (const attacker of [...next.opponentBoard]) {
+    const currentAttacker = next.opponentBoard.find((card) => card.instanceId === attacker.instanceId);
+    if (!currentAttacker?.canAttack || currentAttacker.exhausted) continue;
+    const target = next.playerBoard[0];
+    next = target
+      ? attackMinionForSide(next, "opponent", currentAttacker.instanceId, target.instanceId)
+      : attackHeroForSide(next, "opponent", currentAttacker.instanceId);
   }
   return next;
 }
@@ -648,7 +661,8 @@ function applySpellLikeEffect(state: GameState, cardId: string, side: "player" |
       break;
     }
     case "awareness_wasser":
-      self.stability = Math.min(30, self.stability + 2);
+      if (targetId === SELF_HERO_TARGET) self.stability = Math.min(30, self.stability + 2);
+      else ownBoard = healTarget(ownBoard, targetId, 2);
       self.rausch = Math.max(0, self.rausch - 1);
       break;
     case "awareness_substanztest":
@@ -719,7 +733,8 @@ function applySpellLikeEffect(state: GameState, cardId: string, side: "player" |
       ownBoard = ownBoard.map((card) => (cardById.get(card.cardId)?.faction === "dealer" ? { ...card, attack: card.attack + 1 } : card));
       break;
     case "neutral_wasserflasche":
-      self.stability = Math.min(30, self.stability + 1);
+      if (targetId === SELF_HERO_TARGET) self.stability = Math.min(30, self.stability + 1);
+      else ownBoard = healTarget(ownBoard, targetId, 1);
       self.rausch = Math.max(0, self.rausch - 1);
       break;
     case "neutral_frische_luft":
@@ -727,7 +742,8 @@ function applySpellLikeEffect(state: GameState, cardId: string, side: "player" |
       self.rausch = Math.max(0, self.rausch - 1);
       break;
     case "neutral_erste_hilfe":
-      self.health = Math.min(30, self.health + 4);
+      if (targetId === SELF_HERO_TARGET) self.health = Math.min(30, self.health + 4);
+      else ownBoard = healTarget(ownBoard, targetId, 4);
       break;
     case "neutral_panikmoment":
       if (enemyBoard.length > 0) enemyBoard = damageFirst(enemyBoard, 2);
@@ -930,6 +946,14 @@ function damageTagged(board: BoardCard[], damage: number) {
       return risky ? { ...boardCard, health: boardCard.health - damage } : boardCard;
     })
     .filter((card) => card.health > 0);
+}
+
+function healTarget(board: BoardCard[], targetId: string | undefined, amount: number) {
+  return board.map((boardCard) => {
+    if (boardCard.instanceId !== targetId) return boardCard;
+    const maxHealth = cardById.get(boardCard.cardId)?.stability ?? boardCard.health;
+    return { ...boardCard, health: Math.min(maxHealth, boardCard.health + amount) };
+  });
 }
 
 function reduceHighestRisk(stats: PlayerStats): PlayerStats {
