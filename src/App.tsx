@@ -1,0 +1,703 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { io, type Socket } from "socket.io-client";
+import { EventLog } from "./components/EventLog";
+import { deckForFaction, GameSetup } from "./components/GameSetup";
+import { GameBoard } from "./components/GameBoard";
+import { MulliganScreen } from "./components/MulliganScreen";
+import { TurnBanner } from "./components/TurnBanner";
+import { playSound, setMasterVolume, setSoundEnabled, unlockAudio } from "./audio/sound";
+import { cardById } from "./game/cards";
+import { attackOpponentHero, attackOpponentMinion, endTurn, playCard as playGameCard, useHeroPower as useGameHeroPower } from "./game/actions";
+import { buildMatchReport } from "./game/report";
+import { confirmMulligan, createGameState, initialGameState, starterDecks } from "./game/state";
+import { canPlayCard, targetForCard } from "./game/rules";
+import type { FactionId, GamePhase } from "./game/types";
+
+type TurnBannerTone = "player" | "opponent" | "victory" | "defeat";
+type OnlineRole = "player" | "opponent";
+type OnlineStatus = "waiting" | "mulligan" | "playing";
+type OnlineStatePayload = {
+  mulliganConfirmed?: boolean;
+  state: typeof initialGameState;
+  status: OnlineStatus;
+};
+
+export function App() {
+  const [screen, setScreen] = useState<GamePhase>("deckbuilding");
+  const [onlineMode, setOnlineMode] = useState(false);
+  const [onlineRoomCode, setOnlineRoomCode] = useState("");
+  const [onlineServerUrl, setOnlineServerUrl] = useState(() => localStorage.getItem("nebenwirkungen-online-server") ?? "");
+  const [onlineShareLink, setOnlineShareLink] = useState("");
+  const [onlineStatus, setOnlineStatus] = useState("");
+  const [onlineError, setOnlineError] = useState("");
+  const [onlineRole, setOnlineRole] = useState<OnlineRole | null>(null);
+  const [onlineMulliganConfirmed, setOnlineMulliganConfirmed] = useState(false);
+  const [selectedFaction, setSelectedFaction] = useState<FactionId>("raver");
+  const [deck, setDeck] = useState<string[]>(deckForFaction("raver"));
+  const [mulliganIndexes, setMulliganIndexes] = useState<number[]>([]);
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [selectedAttackerId, setSelectedAttackerId] = useState<string | null>(null);
+  const [selectedHeroPower, setSelectedHeroPower] = useState(false);
+  const [playedCardId, setPlayedCardId] = useState<string>("");
+  const [pauseMenuOpen, setPauseMenuOpen] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [soundOn, setSoundOn] = useState(true);
+  const [soundVolume, setSoundVolume] = useState(0.8);
+  const [actionPopup, setActionPopup] = useState<{ title: string; text: string; visible: boolean } | null>(null);
+  const [turnBanner, setTurnBanner] = useState<{ message: string; tone: TurnBannerTone; visible: boolean }>({
+    message: "Du bist am Zug",
+    tone: "player",
+    visible: false,
+  });
+  const [state, setState] = useState(initialGameState);
+  const socketRef = useRef<Socket | null>(null);
+  const lastTurnRef = useRef("");
+
+  const selectedCard = useMemo(
+    () => (selectedCardId ? cardById.get(selectedCardId) ?? null : null),
+    [selectedCardId],
+  );
+  const canPlaySelected = selectedCard
+    ? state.activePlayer === "player" && state.hand.includes(selectedCard.id) && canPlayCard(selectedCard, state.player)
+    : false;
+  const selectedTarget = selectedCardId ? targetForCard(selectedCardId) : null;
+  const heroPowerNeedsTarget = false;
+  const canUseHeroPower = state.activePlayer === "player" && !state.winner && !state.player.heroPowerUsed && state.player.cash >= 2;
+  const playerSeat = onlineMode ? (onlineRole === "opponent" ? "Spieler 2" : "Spieler 1") : "Spieler 1";
+  const opponentSeat = onlineMode ? (onlineRole === "opponent" ? "Spieler 1" : "Spieler 2") : "Spieler 2";
+  const playerPortrait = onlineMode ? (onlineRole === "opponent" ? "P2" : "P1") : "P1";
+  const opponentPortrait = onlineMode ? (onlineRole === "opponent" ? "P1" : "P2") : "P2";
+
+  useEffect(() => {
+    setSoundEnabled(soundOn);
+    setMasterVolume(soundVolume);
+  }, [soundOn, soundVolume]);
+
+  useEffect(() => {
+    localStorage.setItem("nebenwirkungen-online-server", onlineServerUrl);
+  }, [onlineServerUrl]);
+
+  useEffect(() => {
+    const unsubscribe = window.nebenwirkungenDesktop?.onEscape(() => {
+      togglePauseMenu();
+    });
+    if (unsubscribe) return unsubscribe;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      togglePauseMenu();
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  useEffect(() => {
+    if (screen !== "playing") return;
+    const key = `${state.turn}-${state.activePlayer}-${state.winner ?? "live"}`;
+    if (lastTurnRef.current === key) return;
+    lastTurnRef.current = key;
+
+    const message = state.winner
+      ? state.winner === "player"
+        ? "Sieg"
+        : "Niederlage"
+      : state.activePlayer === "player"
+        ? "Du bist am Zug"
+        : "Gegner ist am Zug";
+    const tone = state.winner
+      ? state.winner === "player"
+        ? "victory"
+        : "defeat"
+      : state.activePlayer === "player"
+        ? "player"
+        : "opponent";
+
+    setTurnBanner({ message, tone, visible: true });
+    if (state.winner === "player") playSound("victory");
+    else if (state.winner === "opponent") playSound("defeat");
+    else if (state.activePlayer === "player") playSound("turn-start");
+
+    const timeout = window.setTimeout(() => {
+      setTurnBanner((current) => ({ ...current, visible: false }));
+    }, state.winner ? 1800 : 1450);
+    return () => window.clearTimeout(timeout);
+  }, [screen, state.activePlayer, state.turn, state.winner]);
+
+  useEffect(() => {
+    if (screen !== "playing") return;
+    const latest = state.events[0];
+    if (!latest?.text.startsWith("Heldenskill")) return;
+    setActionPopup({
+      title: latest.text.split(":")[0] ?? "Heldenskill",
+      text: latest.details ?? latest.text,
+      visible: true,
+    });
+    const timeout = window.setTimeout(() => {
+      setActionPopup((current) => (current ? { ...current, visible: false } : current));
+    }, 1800);
+    return () => window.clearTimeout(timeout);
+  }, [screen, state.events]);
+
+  useEffect(() => {
+    const urlRoom = new URLSearchParams(window.location.search).get("room");
+    if (urlRoom) setOnlineRoomCode(urlRoom.toUpperCase());
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      socketRef.current?.disconnect();
+    };
+  }, []);
+
+  function selectCard(cardId: string) {
+    if (state.winner) return;
+    unlockAudio();
+    playSound("button");
+    setSelectedAttackerId(null);
+    setSelectedHeroPower(false);
+    setSelectedCardId(cardId);
+    setPlayedCardId(cardId);
+  }
+
+  function playSelectedCard() {
+    if (!selectedCardId || state.winner) return;
+    if (selectedTarget) return;
+    unlockAudio();
+    playSound("card-play");
+    if (onlineMode) {
+      socketRef.current?.emit("game:play-card", { roomCode: onlineRoomCode, cardId: selectedCardId });
+    } else {
+      setState((current) => playGameCard(current, selectedCardId));
+    }
+    setSelectedCardId(null);
+    setSelectedHeroPower(false);
+  }
+
+  function playSelectedCardOnTarget(targetId: string) {
+    if (!selectedCardId || !selectedTarget || !canPlaySelected || state.winner) return;
+    unlockAudio();
+    playSound("card-play");
+    if (onlineMode) {
+      socketRef.current?.emit("game:play-card", { roomCode: onlineRoomCode, cardId: selectedCardId, targetId });
+    } else {
+      setState((current) => playGameCard(current, selectedCardId, targetId));
+    }
+    setSelectedCardId(null);
+    setSelectedHeroPower(false);
+  }
+
+  function playHandCard(cardId: string, targetId?: string) {
+    const card = cardById.get(cardId);
+    if (!card || state.winner) return;
+    if (state.activePlayer !== "player" || !state.hand.includes(cardId) || !canPlayCard(card, state.player)) {
+      selectCard(cardId);
+      return;
+    }
+    const target = targetForCard(cardId);
+    if (target && !targetId) {
+      selectCard(cardId);
+      return;
+    }
+    if (!target && targetId) return;
+
+    unlockAudio();
+    playSound("card-play");
+    if (onlineMode) {
+      socketRef.current?.emit("game:play-card", { roomCode: onlineRoomCode, cardId, targetId });
+    } else {
+      setState((current) => playGameCard(current, cardId, targetId));
+    }
+    setSelectedCardId(null);
+    setSelectedAttackerId(null);
+    setSelectedHeroPower(false);
+    setPlayedCardId(cardId);
+  }
+
+  function useHeroPower(targetId?: string) {
+    if (state.winner || !canUseHeroPower) return;
+    if (heroPowerNeedsTarget && !targetId) {
+      unlockAudio();
+      playSound("button");
+      setSelectedCardId(null);
+      setSelectedAttackerId(null);
+      setSelectedHeroPower((current) => !current);
+      return;
+    }
+
+    unlockAudio();
+    playSound("card-play");
+    if (onlineMode) {
+      socketRef.current?.emit("game:hero-power", { roomCode: onlineRoomCode, targetId });
+    } else {
+      setState((current) => useGameHeroPower(current, targetId));
+    }
+    setSelectedCardId(null);
+    setSelectedAttackerId(null);
+    setSelectedHeroPower(false);
+  }
+
+
+  function selectAttacker(instanceId: string) {
+    if (state.winner || state.activePlayer !== "player") return;
+    unlockAudio();
+    playSound("button");
+    setSelectedCardId(null);
+    setSelectedHeroPower(false);
+    setSelectedAttackerId((current) => (current === instanceId ? null : instanceId));
+  }
+
+  function attackHero() {
+    if (!selectedAttackerId) return;
+    unlockAudio();
+    playSound("attack");
+    if (onlineMode) {
+      socketRef.current?.emit("game:attack-hero", { roomCode: onlineRoomCode, attackerId: selectedAttackerId });
+    } else {
+      setState((current) => attackOpponentHero(current, selectedAttackerId));
+    }
+    setSelectedAttackerId(null);
+    setSelectedHeroPower(false);
+  }
+
+  function attackMinion(targetId: string) {
+    if (!selectedAttackerId) return;
+    unlockAudio();
+    playSound("hit");
+    if (onlineMode) {
+      socketRef.current?.emit("game:attack-minion", { roomCode: onlineRoomCode, attackerId: selectedAttackerId, targetId });
+    } else {
+      setState((current) => attackOpponentMinion(current, selectedAttackerId, targetId));
+    }
+    setSelectedAttackerId(null);
+    setSelectedHeroPower(false);
+  }
+
+  function restartGame() {
+    unlockAudio();
+    playSound("button");
+    setPauseMenuOpen(false);
+    setOptionsOpen(false);
+    setSelectedCardId(null);
+    setSelectedAttackerId(null);
+    setSelectedHeroPower(false);
+    setPlayedCardId("");
+    setScreen("deckbuilding");
+  }
+
+  function exportMatchAnalysis() {
+    unlockAudio();
+    playSound("button");
+    const report = buildMatchReport(state, {
+      opponentLabel: onlineMode ? opponentSeat : "Gegner",
+      playerLabel: onlineMode ? playerSeat : "Du",
+    });
+    const blob = new Blob([report], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const roomPart = onlineMode && onlineRoomCode ? `-${onlineRoomCode}` : "";
+    link.href = url;
+    link.download = `nebenwirkungen-analyse-runde-${state.turn}${roomPart}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function returnToLobby() {
+    unlockAudio();
+    playSound("button");
+    setPauseMenuOpen(false);
+    setOptionsOpen(false);
+    socketRef.current?.disconnect();
+    socketRef.current = null;
+    setOnlineMode(false);
+    setOnlineStatus("");
+    setOnlineError("");
+    setOnlineShareLink("");
+    setOnlineRole(null);
+    setOnlineMulliganConfirmed(false);
+    lastTurnRef.current = "";
+    setSelectedCardId(null);
+    setSelectedAttackerId(null);
+    setPlayedCardId("");
+    setMulliganIndexes([]);
+    setScreen("deckbuilding");
+  }
+
+  function leaveGame() {
+    unlockAudio();
+    playSound("button");
+    socketRef.current?.disconnect();
+    socketRef.current = null;
+    if (window.nebenwirkungenDesktop?.quitApp) {
+      window.nebenwirkungenDesktop.quitApp();
+      return;
+    }
+    window.close();
+    setPauseMenuOpen(false);
+    setOptionsOpen(false);
+  }
+
+  function togglePauseMenu() {
+    setPauseMenuOpen((current) => {
+      setOptionsOpen(false);
+      return !current;
+    });
+  }
+
+  function toggleFullscreen() {
+    unlockAudio();
+    playSound("button");
+    if (window.nebenwirkungenDesktop?.toggleFullscreen) {
+      window.nebenwirkungenDesktop.toggleFullscreen();
+      return;
+    }
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+      return;
+    }
+    void document.documentElement.requestFullscreen();
+  }
+
+  function connectOnlineSocket() {
+    if (socketRef.current?.connected) return socketRef.current;
+    const fallbackServerUrl =
+      window.location.protocol === "file:" || window.location.port === "5173" ? "http://127.0.0.1:3001" : window.location.origin;
+    const envServerUrl = (import.meta.env.VITE_MULTIPLAYER_URL as string | undefined)?.trim();
+    const serverUrl = onlineServerUrl.trim() || envServerUrl || fallbackServerUrl;
+    const socket = io(serverUrl, { transports: ["websocket", "polling"] });
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+      setOnlineError("");
+      setOnlineStatus("Online-Server verbunden.");
+    });
+    socket.on("connect_error", () => {
+      setOnlineError(`Online-Server nicht erreichbar: ${serverUrl}`);
+    });
+    socket.on("room:update", (payload: { roomCode: string; role: OnlineRole; status: OnlineStatus; playerCount: number }) => {
+      setOnlineMode(true);
+      setOnlineRoomCode(payload.roomCode);
+      setOnlineRole(payload.role);
+      const isDesktopFile = window.location.protocol === "file:";
+      const link = isDesktopFile ? `Raumcode: ${payload.roomCode}` : `${window.location.origin}${window.location.pathname}?room=${payload.roomCode}`;
+      setOnlineShareLink(link);
+      if (!isDesktopFile) window.history.replaceState(null, "", `?room=${payload.roomCode}`);
+      setOnlineStatus(
+        payload.status === "waiting"
+          ? `Raum ${payload.roomCode}: Warte auf zweiten Spieler.`
+          : payload.status === "mulligan"
+            ? `Raum ${payload.roomCode}: Starthand waehlen.`
+            : `Raum ${payload.roomCode}: Online-Spiel laeuft.`,
+      );
+    });
+    socket.on("room:error", (payload: { message: string }) => {
+      setOnlineError(payload.message);
+    });
+    socket.on("game:state", (payload: OnlineStatePayload | typeof state) => {
+      const nextState = "state" in payload ? payload.state : payload;
+      const status = "state" in payload ? payload.status : "playing";
+      const mulliganConfirmed = "state" in payload ? Boolean(payload.mulliganConfirmed) : false;
+      setState(nextState);
+      setOnlineMulliganConfirmed(mulliganConfirmed);
+      setSelectedCardId(null);
+      setSelectedAttackerId(null);
+      setSelectedHeroPower(false);
+      setPlayedCardId("");
+      setOnlineMode(true);
+      setScreen(status === "mulligan" ? "mulligan" : "playing");
+    });
+
+    return socket;
+  }
+
+  function createOnlineRoom() {
+    unlockAudio();
+    playSound("button");
+    setOnlineError("");
+    setOnlineRole(null);
+    setOnlineMulliganConfirmed(false);
+    lastTurnRef.current = "";
+    const socket = connectOnlineSocket();
+    socket.emit("room:create", { faction: selectedFaction, deck });
+  }
+
+  function joinOnlineRoom() {
+    unlockAudio();
+    playSound("button");
+    setOnlineError("");
+    setOnlineRole(null);
+    setOnlineMulliganConfirmed(false);
+    lastTurnRef.current = "";
+    const socket = connectOnlineSocket();
+    socket.emit("room:join", { roomCode: onlineRoomCode, faction: selectedFaction, deck });
+  }
+
+  function selectFaction(faction: FactionId) {
+    if (!["raver", "awareness", "dealer"].includes(faction)) return;
+    setSelectedFaction(faction);
+    setDeck(deckForFaction(faction));
+  }
+
+  function addCard(cardId: string) {
+    if (deck.length >= 30) return;
+    const copies = deck.filter((id) => id === cardId).length;
+    if (copies >= 2) return;
+    setDeck((current) => [...current, cardId]);
+  }
+
+  function removeCard(index: number) {
+    setDeck((current) => current.filter((_, currentIndex) => currentIndex !== index));
+  }
+
+  function clearDeck() {
+    setDeck([]);
+  }
+
+  function loadStarterDeck() {
+    setDeck(deckForFaction(selectedFaction));
+  }
+
+  function startMatch() {
+    unlockAudio();
+    playSound("button");
+    lastTurnRef.current = "";
+    const opponentDeck = selectedFaction === "awareness" ? starterDecks.dealer : starterDecks.awareness;
+    setSelectedCardId(null);
+    setPlayedCardId("");
+    setState(
+      createGameState({
+        playerFaction: selectedFaction,
+        opponentFaction: selectedFaction === "awareness" ? "dealer" : "awareness",
+        playerDeck: deck,
+        opponentDeck,
+      }),
+    );
+    setMulliganIndexes([]);
+    setScreen("mulligan");
+  }
+
+  function toggleMulliganCard(index: number) {
+    unlockAudio();
+    playSound("button");
+    setMulliganIndexes((current) =>
+      current.includes(index) ? current.filter((item) => item !== index) : [...current, index],
+    );
+  }
+
+  function confirmStartingHand() {
+    unlockAudio();
+    lastTurnRef.current = "";
+    if (onlineMode) {
+      socketRef.current?.emit("game:mulligan-confirm", { roomCode: onlineRoomCode, selectedIndexes: mulliganIndexes });
+      setOnlineMulliganConfirmed(true);
+      setMulliganIndexes([]);
+      playSound("button");
+      return;
+    }
+    playSound("turn-start");
+    setState((current) => confirmMulligan(current, mulliganIndexes));
+    setMulliganIndexes([]);
+    setScreen("playing");
+  }
+
+  function renderPauseMenu() {
+    if (!pauseMenuOpen) return null;
+    return (
+      <section className="pause-overlay" aria-label="Spielmenue">
+        <div className="pause-card">
+          <span>{onlineMode ? `Raum ${onlineRoomCode}` : screen === "deckbuilding" ? "Lobby" : "Solo-Spiel"}</span>
+          <h2>{optionsOpen ? "Optionen" : "Pause"}</h2>
+          {optionsOpen ? (
+            <div className="options-panel">
+              <label className="option-row">
+                <span>Sound</span>
+                <button
+                  className={soundOn ? "is-active" : ""}
+                  onClick={() => {
+                    unlockAudio();
+                    setSoundOn((current) => !current);
+                  }}
+                  type="button"
+                >
+                  {soundOn ? "An" : "Aus"}
+                </button>
+              </label>
+              <label className="option-row">
+                <span>Lautstaerke</span>
+                <input
+                  max="1"
+                  min="0"
+                  onChange={(event) => setSoundVolume(Number(event.target.value))}
+                  step="0.05"
+                  type="range"
+                  value={soundVolume}
+                />
+              </label>
+              <label className="option-row">
+                <span>Online-Server</span>
+                <input
+                  onChange={(event) => setOnlineServerUrl(event.target.value)}
+                  placeholder="https://dein-server.onrender.com"
+                  type="url"
+                  value={onlineServerUrl}
+                />
+              </label>
+              <button type="button" onClick={toggleFullscreen}>
+                Vollbild wechseln
+              </button>
+              <button type="button" onClick={() => setOptionsOpen(false)}>
+                Zurueck
+              </button>
+            </div>
+          ) : (
+            <div className="pause-actions">
+              <button type="button" onClick={() => setPauseMenuOpen(false)}>
+                Fortsetzen
+              </button>
+              <button type="button" onClick={() => setOptionsOpen(true)}>
+                Optionen
+              </button>
+              <button type="button" onClick={restartGame}>
+                Spiel neu starten
+              </button>
+              <button type="button" onClick={returnToLobby}>
+                Zur Lobby
+              </button>
+              <button className="danger-menu-action" type="button" onClick={leaveGame}>
+                Spiel verlassen
+              </button>
+            </div>
+          )}
+          <small>ESC oeffnet und schliesst dieses Menue.</small>
+        </div>
+      </section>
+    );
+  }
+
+  if (screen === "deckbuilding") {
+    return (
+      <>
+        <GameSetup
+          deck={deck}
+          onlineError={onlineError}
+          onlineRoomCode={onlineRoomCode}
+          onlineServerUrl={onlineServerUrl}
+          onlineShareLink={onlineShareLink}
+          onlineStatus={onlineStatus}
+          selectedFaction={selectedFaction}
+          onAddCard={addCard}
+          onClearDeck={clearDeck}
+          onCreateOnlineRoom={createOnlineRoom}
+          onJoinOnlineRoom={joinOnlineRoom}
+          onLoadStarterDeck={loadStarterDeck}
+          onOnlineRoomCodeChange={setOnlineRoomCode}
+          onOnlineServerUrlChange={setOnlineServerUrl}
+          onRemoveCard={removeCard}
+          onSelectFaction={selectFaction}
+          onStart={startMatch}
+        />
+        {renderPauseMenu()}
+      </>
+    );
+  }
+
+  if (screen === "mulligan") {
+    return (
+      <>
+        <MulliganScreen
+          hand={state.hand}
+          isWaiting={onlineMode && onlineMulliganConfirmed}
+          selectedIndexes={mulliganIndexes}
+          onConfirm={confirmStartingHand}
+          onToggleCard={toggleMulliganCard}
+        />
+        {renderPauseMenu()}
+      </>
+    );
+  }
+
+  return (
+    <main className="app-shell">
+      <TurnBanner message={turnBanner.message} tone={turnBanner.tone} visible={turnBanner.visible} />
+      {actionPopup ? (
+        <div className={`action-popup ${actionPopup.visible ? "is-visible" : ""}`}>
+          <strong>{actionPopup.title}</strong>
+          <span>{actionPopup.text}</span>
+        </div>
+      ) : null}
+      <header className="topbar">
+        <div className={`turn-chip ${state.activePlayer === "player" ? "is-you" : "is-them"}`}>
+          <strong>{onlineMode ? `Du bist ${playerSeat}` : "Solo-Spiel"}</strong>
+          <span>{state.activePlayer === "player" ? "Du bist am Zug" : "Gegner ist am Zug"}</span>
+        </div>
+      </header>
+
+      <section className="game-frame">
+        <EventLog
+          events={state.events}
+          opponentLabel={opponentSeat}
+          opponentPortrait={opponentPortrait}
+          opponentSubLabel="Gegner"
+          playerLabel={playerSeat}
+          playerPortrait={playerPortrait}
+          playerSubLabel="Du"
+        />
+        <GameBoard
+          state={state}
+          playedCardId={playedCardId}
+          selectedCardId={selectedCardId}
+          selectedTarget={canPlaySelected ? selectedTarget : null}
+          selectedHeroPower={selectedHeroPower}
+          selectedAttackerId={selectedAttackerId}
+          onSelectAttacker={selectAttacker}
+          onAttackOpponentHero={attackHero}
+          onAttackOpponentMinion={attackMinion}
+          onSelectHandCard={selectCard}
+          onPlayHandCard={playHandCard}
+          onUseHeroPower={useHeroPower}
+          onPlaySelected={playSelectedCard}
+          onPlaySelectedOnTarget={playSelectedCardOnTarget}
+          opponentTitle={onlineMode ? opponentSeat : "Gegner"}
+          playerTitle={onlineMode ? `Du - ${playerSeat}` : "Du"}
+          selectedCard={selectedCard}
+          canPlaySelected={canPlaySelected}
+          canUseHeroPower={canUseHeroPower}
+          onEndTurn={() => {
+            unlockAudio();
+            playSound("button");
+            setSelectedCardId(null);
+            setSelectedAttackerId(null);
+            setSelectedHeroPower(false);
+            if (onlineMode) socketRef.current?.emit("game:end-turn", { roomCode: onlineRoomCode });
+            else setState((current) => endTurn(current));
+          }}
+        />
+      </section>
+
+      {state.winner ? (
+        <section className={`endgame-overlay ${state.winner === "player" ? "is-victory" : "is-defeat"}`}>
+          <div className="endgame-card">
+            <span>{state.winner === "player" ? "Sieg" : "Niederlage"}</span>
+            <h2>{state.winner === "player" ? "Du hast den Gegner gebrochen" : "Du bist gebrochen"}</h2>
+            <p>
+              {state.winner === "player"
+                ? "Gesundheit oder Stabilität des Gegners ist auf 0 gefallen."
+                : "Deine Gesundheit oder Stabilität ist auf 0 gefallen."}
+            </p>
+            <button type="button" onClick={restartGame}>
+              Neues Spiel
+            </button>
+            <button className="secondary-endgame-action" type="button" onClick={exportMatchAnalysis}>
+              Analyse exportieren
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {renderPauseMenu()}
+    </main>
+  );
+}

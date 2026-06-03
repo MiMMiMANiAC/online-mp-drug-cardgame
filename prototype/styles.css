@@ -1,0 +1,334 @@
+:root {
+  color: #edf4f2;
+  background: #080a0c;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 10% 15%, rgba(22, 129, 118, 0.22), transparent 28rem),
+    radial-gradient(circle at 80% 5%, rgba(182, 58, 42, 0.16), transparent 24rem),
+    linear-gradient(135deg, #080a0c 0%, #15191d 52%, #0a0d0f 100%);
+}
+
+button {
+  font: inherit;
+}
+
+.app-shell {
+  display: grid;
+  min-height: 100vh;
+  grid-template-rows: auto 1fr auto auto;
+  gap: 14px;
+  padding: 18px;
+}
+
+.topbar,
+.turnbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.topbar h1 {
+  margin: 0;
+  color: #f2c56b;
+  font-size: clamp(2rem, 4vw, 4rem);
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.room-code,
+.ghost-button,
+.end-turn {
+  border: 1px solid rgba(237, 244, 242, 0.18);
+  border-radius: 8px;
+  color: #edf4f2;
+  background: rgba(16, 20, 23, 0.82);
+  padding: 10px 14px;
+}
+
+.match-layout {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.72fr) minmax(520px, 3.4fr) minmax(220px, 0.95fr);
+  gap: 14px;
+}
+
+.event-log,
+.stats-panel,
+.board-shell {
+  border: 1px solid rgba(237, 244, 242, 0.14);
+  border-radius: 8px;
+  background: rgba(12, 15, 18, 0.76);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+}
+
+.event-log,
+.stats-panel {
+  padding: 14px;
+}
+
+h2 {
+  margin: 0 0 12px;
+  color: #f2c56b;
+  font-size: 1rem;
+  text-transform: uppercase;
+}
+
+.event {
+  margin: 0 0 10px;
+  border-left: 3px solid #738089;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.92rem;
+}
+
+.event-warning {
+  border-color: #f2c56b;
+}
+
+.event-danger {
+  border-color: #d65744;
+}
+
+.opponent-strip,
+.player-strip {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 14px;
+  color: #cad6d2;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.table {
+  position: relative;
+  min-height: 520px;
+  margin: 0 auto;
+  max-width: 920px;
+  padding: 80px 54px;
+  border-inline: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(21, 25, 29, 0.92);
+}
+
+.slot-row {
+  display: grid;
+  grid-template-columns: repeat(5, 104px);
+  justify-content: center;
+  gap: 34px;
+}
+
+.opponent-row {
+  margin-bottom: 54px;
+}
+
+.player-row {
+  margin-top: 54px;
+}
+
+.center-line {
+  height: 2px;
+  background: rgba(242, 179, 76, 0.25);
+}
+
+.slot {
+  display: grid;
+  height: 142px;
+  place-items: center;
+  border: 1px solid rgba(140, 154, 163, 0.28);
+  border-radius: 12px;
+  background: rgba(13, 16, 19, 0.7);
+}
+
+.small-card,
+.played-card {
+  border: 2px solid rgba(242, 197, 107, 0.82);
+  background: linear-gradient(180deg, #283139, #171c21);
+  color: #fff;
+  font-weight: 800;
+}
+
+.played-card {
+  position: absolute;
+  left: calc(50% - 52px);
+  bottom: 24px;
+  display: grid;
+  width: 104px;
+  height: 142px;
+  place-items: center;
+  border-radius: 10px;
+  transform: translateY(0) scale(0.82) rotate(-5deg);
+}
+
+.played-card.animate {
+  animation: play-card 680ms cubic-bezier(0.19, 1, 0.22, 1) both;
+}
+
+@keyframes play-card {
+  0% {
+    transform: translateY(0) scale(0.82) rotate(-5deg);
+  }
+  100% {
+    transform: translateY(-172px) scale(1) rotate(0deg);
+  }
+}
+
+.meter {
+  margin-bottom: 10px;
+}
+
+.meter div {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 5px;
+  font-size: 0.9rem;
+}
+
+.meter i {
+  display: block;
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.meter b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.meter-health b { background: #d65744; }
+.meter-stability b { background: #56adc7; }
+.meter-danger b { background: #f2c56b; }
+.meter-rausch b { background: #9f7aea; }
+.meter-cash b { background: #33a898; }
+.meter-control b { background: #8fc2ff; }
+.meter-addiction b { background: #e45f7d; }
+
+.meter small {
+  display: block;
+  margin-top: 4px;
+  color: #aebbb7;
+}
+
+.inspector {
+  margin-top: 18px;
+  border-top: 1px solid rgba(237, 244, 242, 0.12);
+  padding-top: 14px;
+}
+
+.inspector h3 {
+  margin: 0 0 8px;
+}
+
+.inspector p {
+  margin: 0;
+  color: #c8d2cf;
+  line-height: 1.45;
+}
+
+.hand {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(116px, 1fr));
+  gap: 12px;
+}
+
+.card {
+  position: relative;
+  display: grid;
+  min-height: 196px;
+  grid-template-rows: auto auto 52px 1fr auto;
+  gap: 6px;
+  border: 2px solid rgba(242, 197, 107, 0.7);
+  border-radius: 8px;
+  padding: 12px;
+  color: #edf4f2;
+  background: linear-gradient(180deg, #283139, #171c21);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.card:hover {
+  transform: translateY(-8px);
+  border-color: #f2c56b;
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.32);
+}
+
+.card-cost {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 999px;
+  background: #168176;
+  font-weight: 900;
+}
+
+.card-kind {
+  color: #f2c56b;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.card strong {
+  padding-right: 30px;
+  font-size: 1rem;
+}
+
+.card-art {
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: #f2c56b;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent), #3b444b;
+  font-size: 1.5rem;
+  font-weight: 900;
+}
+
+.card-effect,
+.card-drawback {
+  font-size: 0.78rem;
+  line-height: 1.3;
+}
+
+.card-drawback {
+  color: #ffad9e;
+}
+
+.end-turn {
+  border-color: rgba(242, 197, 107, 0.75);
+  background: #a84b36;
+  color: #fff9ef;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.turnbar p {
+  margin: 0;
+  color: #c8d2cf;
+}
+
+@media (max-width: 980px) {
+  .match-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .hand {
+    grid-template-columns: repeat(2, minmax(130px, 1fr));
+  }
+}

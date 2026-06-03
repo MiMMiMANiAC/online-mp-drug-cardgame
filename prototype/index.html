@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nebenwirkungen Preview</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <span class="room-code">Raum 7K2F</span>
+        <h1>Nebenwirkungen</h1>
+        <button class="ghost-button" type="button">Lobby</button>
+      </header>
+
+      <section class="match-layout">
+        <aside class="event-log" aria-label="Ereignislog">
+          <h2>Log</h2>
+          <p class="event event-warning">Fahndungsdruck steigt</p>
+          <p class="event event-danger">Craving gemischt</p>
+          <p class="event event-danger">Razzia droht</p>
+        </aside>
+
+        <section class="board-shell" aria-label="Spielbrett">
+          <div class="opponent-strip">
+            <span>Harm Reduction</span>
+            <span>4 Karten</span>
+          </div>
+          <div class="table">
+            <div class="slot-row opponent-row">
+              <div class="slot"></div>
+              <div class="slot board-card small-card">Razzia</div>
+              <div class="slot"></div>
+              <div class="slot"></div>
+              <div class="slot"></div>
+            </div>
+            <div class="center-line"></div>
+            <div class="slot-row player-row" id="player-row">
+              <div class="slot board-card small-card">Streetworker</div>
+              <div class="slot"></div>
+              <div class="slot" id="target-slot"></div>
+              <div class="slot"></div>
+              <div class="slot"></div>
+            </div>
+            <div class="played-card" id="played-card">Kokain</div>
+          </div>
+          <div class="player-strip">
+            <span>Clubszene</span>
+            <span>Runde 3</span>
+          </div>
+        </section>
+
+        <aside class="stats-panel" aria-label="Spielerstatus">
+          <h2>Clubszene</h2>
+          <div class="meter meter-health"><div><span>Gesundheit</span><strong>24</strong></div><i><b style="width:80%"></b></i></div>
+          <div class="meter meter-stability"><div><span>Stabilität</span><strong>18</strong></div><i><b style="width:60%"></b></i></div>
+          <div class="meter meter-danger"><div><span>Fahndungsdruck</span><strong>5</strong></div><i><b style="width:50%"></b></i><small>Beobachtet</small></div>
+          <div class="meter meter-rausch"><div><span>Rausch</span><strong>3</strong></div><i><b style="width:30%"></b></i><small>Unter Einfluss</small></div>
+          <div class="meter meter-cash"><div><span>Cash</span><strong>6</strong></div><i><b style="width:60%"></b></i></div>
+          <div class="meter meter-control"><div><span>Kontrolle</span><strong>4</strong></div><i><b style="width:40%"></b></i></div>
+          <div class="meter meter-addiction"><div><span>Abhängigkeit</span><strong>1</strong></div><i><b style="width:20%"></b></i></div>
+          <section class="inspector">
+            <h3 id="inspector-title">Karte wählen</h3>
+            <p id="inspector-text">Klicke eine Handkarte an, um die Lege-Animation zu testen.</p>
+          </section>
+        </aside>
+      </section>
+
+      <section class="hand" aria-label="Handkarten" id="hand"></section>
+
+      <footer class="turnbar">
+        <p>Kurzfristiger Vorteil. Langfristige Kosten.</p>
+        <button class="end-turn" type="button">Zug beenden</button>
+      </footer>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
