@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import { EventLog } from "./components/EventLog";
-import { deckForFaction, GameSetup } from "./components/GameSetup";
+import { deckForFaction, type FriendEntry, GameSetup } from "./components/GameSetup";
 import { GameBoard } from "./components/GameBoard";
 import { MulliganScreen } from "./components/MulliganScreen";
 import { TurnBanner } from "./components/TurnBanner";
@@ -21,6 +21,16 @@ type OnlineStatePayload = {
   state: typeof initialGameState;
   status: OnlineStatus;
 };
+type RoomUpdatePayload = {
+  opponentFriendCode?: string;
+  opponentName?: string;
+  playerFriendCode?: string;
+  playerName?: string;
+  roomCode: string;
+  role: OnlineRole;
+  status: OnlineStatus;
+  playerCount: number;
+};
 
 export function App() {
   const [screen, setScreen] = useState<GamePhase>("deckbuilding");
@@ -32,6 +42,12 @@ export function App() {
   const [onlineError, setOnlineError] = useState("");
   const [onlineRole, setOnlineRole] = useState<OnlineRole | null>(null);
   const [onlineMulliganConfirmed, setOnlineMulliganConfirmed] = useState(false);
+  const [playerName, setPlayerName] = useState(() => localStorage.getItem("nebenwirkungen-player-name") ?? "Spieler");
+  const [playerFriendCode] = useState(() => getOrCreateFriendCode());
+  const [friendCodeDraft, setFriendCodeDraft] = useState("");
+  const [friends, setFriends] = useState<FriendEntry[]>(() => loadFriends());
+  const [onlineOwnName, setOnlineOwnName] = useState("");
+  const [onlineOpponentName, setOnlineOpponentName] = useState("");
   const [selectedFaction, setSelectedFaction] = useState<FactionId>("raver");
   const [deck, setDeck] = useState<string[]>(deckForFaction("raver"));
   const [mulliganIndexes, setMulliganIndexes] = useState<number[]>([]);
@@ -63,8 +79,8 @@ export function App() {
   const selectedTarget = selectedCardId ? targetForCard(selectedCardId) : null;
   const heroPowerNeedsTarget = false;
   const canUseHeroPower = state.activePlayer === "player" && !state.winner && !state.player.heroPowerUsed && state.player.cash >= 2;
-  const playerSeat = onlineMode ? (onlineRole === "opponent" ? "Spieler 2" : "Spieler 1") : "Spieler 1";
-  const opponentSeat = onlineMode ? (onlineRole === "opponent" ? "Spieler 1" : "Spieler 2") : "Spieler 2";
+  const playerSeat = onlineMode ? onlineOwnName || playerName || (onlineRole === "opponent" ? "Spieler 2" : "Spieler 1") : "Spieler 1";
+  const opponentSeat = onlineMode ? onlineOpponentName || (onlineRole === "opponent" ? "Spieler 1" : "Spieler 2") : "Spieler 2";
   const playerPortrait = onlineMode ? (onlineRole === "opponent" ? "P2" : "P1") : "P1";
   const opponentPortrait = onlineMode ? (onlineRole === "opponent" ? "P1" : "P2") : "P2";
 
@@ -76,6 +92,14 @@ export function App() {
   useEffect(() => {
     localStorage.setItem("nebenwirkungen-online-server", onlineServerUrl);
   }, [onlineServerUrl]);
+
+  useEffect(() => {
+    localStorage.setItem("nebenwirkungen-player-name", cleanPlayerName(playerName));
+  }, [playerName]);
+
+  useEffect(() => {
+    localStorage.setItem("nebenwirkungen-friends", JSON.stringify(friends));
+  }, [friends]);
 
   useEffect(() => {
     const unsubscribe = window.nebenwirkungenDesktop?.onEscape(() => {
@@ -318,6 +342,8 @@ export function App() {
     setOnlineShareLink("");
     setOnlineRole(null);
     setOnlineMulliganConfirmed(false);
+    setOnlineOwnName("");
+    setOnlineOpponentName("");
     lastTurnRef.current = "";
     setSelectedCardId(null);
     setSelectedAttackerId(null);
@@ -377,10 +403,12 @@ export function App() {
     socket.on("connect_error", () => {
       setOnlineError(`Online-Server nicht erreichbar: ${serverUrl}`);
     });
-    socket.on("room:update", (payload: { roomCode: string; role: OnlineRole; status: OnlineStatus; playerCount: number }) => {
+    socket.on("room:update", (payload: RoomUpdatePayload) => {
       setOnlineMode(true);
       setOnlineRoomCode(payload.roomCode);
       setOnlineRole(payload.role);
+      setOnlineOwnName(payload.playerName ?? "");
+      setOnlineOpponentName(payload.opponentName ?? "");
       const isDesktopFile = window.location.protocol === "file:";
       const link = isDesktopFile ? `Raumcode: ${payload.roomCode}` : `${window.location.origin}${window.location.pathname}?room=${payload.roomCode}`;
       setOnlineShareLink(link);
@@ -421,7 +449,7 @@ export function App() {
     setOnlineMulliganConfirmed(false);
     lastTurnRef.current = "";
     const socket = connectOnlineSocket();
-    socket.emit("room:create", { faction: selectedFaction, deck });
+    socket.emit("room:create", { faction: selectedFaction, deck, displayName: cleanPlayerName(playerName), friendCode: playerFriendCode });
   }
 
   function joinOnlineRoom() {
@@ -432,7 +460,24 @@ export function App() {
     setOnlineMulliganConfirmed(false);
     lastTurnRef.current = "";
     const socket = connectOnlineSocket();
-    socket.emit("room:join", { roomCode: onlineRoomCode, faction: selectedFaction, deck });
+    socket.emit("room:join", {
+      roomCode: onlineRoomCode,
+      faction: selectedFaction,
+      deck,
+      displayName: cleanPlayerName(playerName),
+      friendCode: playerFriendCode,
+    });
+  }
+
+  function addFriend() {
+    const code = normalizeFriendCode(friendCodeDraft);
+    if (!code || code === playerFriendCode) return;
+    setFriends((current) => (current.some((friend) => friend.code === code) ? current : [...current, { code }]));
+    setFriendCodeDraft("");
+  }
+
+  function removeFriend(friendCode: string) {
+    setFriends((current) => current.filter((friend) => friend.code !== friendCode));
   }
 
   function selectFaction(faction: FactionId) {
@@ -582,19 +627,27 @@ export function App() {
       <>
         <GameSetup
           deck={deck}
+          friendCodeDraft={friendCodeDraft}
+          friends={friends}
           onlineError={onlineError}
           onlineRoomCode={onlineRoomCode}
           onlineServerUrl={onlineServerUrl}
           onlineShareLink={onlineShareLink}
           onlineStatus={onlineStatus}
+          playerFriendCode={playerFriendCode}
+          playerName={playerName}
           selectedFaction={selectedFaction}
           onAddCard={addCard}
+          onAddFriend={addFriend}
           onClearDeck={clearDeck}
           onCreateOnlineRoom={createOnlineRoom}
           onJoinOnlineRoom={joinOnlineRoom}
           onLoadStarterDeck={loadStarterDeck}
           onOnlineRoomCodeChange={setOnlineRoomCode}
           onOnlineServerUrlChange={setOnlineServerUrl}
+          onPlayerNameChange={setPlayerName}
+          onFriendCodeDraftChange={setFriendCodeDraft}
+          onRemoveFriend={removeFriend}
           onRemoveCard={removeCard}
           onSelectFaction={selectFaction}
           onStart={startMatch}
@@ -700,4 +753,37 @@ export function App() {
       {renderPauseMenu()}
     </main>
   );
+}
+
+function cleanPlayerName(name: string) {
+  return name.trim().replace(/\s+/g, " ").slice(0, 18) || "Spieler";
+}
+
+function normalizeFriendCode(code: string) {
+  return code.trim().toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 12);
+}
+
+function getOrCreateFriendCode() {
+  const stored = localStorage.getItem("nebenwirkungen-friend-code");
+  if (stored) return stored;
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let suffix = "";
+  for (let index = 0; index < 5; index += 1) {
+    suffix += alphabet[Math.floor(Math.random() * alphabet.length)];
+  }
+  const code = `NW-${suffix}`;
+  localStorage.setItem("nebenwirkungen-friend-code", code);
+  return code;
+}
+
+function loadFriends(): FriendEntry[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem("nebenwirkungen-friends") ?? "[]");
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item) => ({ code: normalizeFriendCode(String(item?.code ?? "")) }))
+      .filter((item) => item.code);
+  } catch {
+    return [];
+  }
 }

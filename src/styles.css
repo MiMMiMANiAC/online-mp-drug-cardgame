@@ -3931,7 +3931,8 @@ body {
   transform: translateY(-18px) scale(1.06) !important;
 }
 
-.online-panel {
+.online-panel,
+.profile-panel {
   display: grid;
   gap: 8px;
   margin-top: 10px;
@@ -3941,20 +3942,23 @@ body {
   background: rgba(8, 30, 27, 0.76);
 }
 
-.online-panel strong {
+.online-panel strong,
+.profile-panel strong {
   color: var(--mint);
   font-family: var(--font-display);
   letter-spacing: 0;
   text-transform: uppercase;
 }
 
-.online-panel div {
+.online-panel div,
+.profile-panel div {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
 }
 
-.online-panel input {
+.online-panel input,
+.profile-panel input {
   min-width: 0;
   height: 34px;
   padding: 0 10px;
@@ -3963,22 +3967,29 @@ body {
   background: rgba(0, 0, 0, 0.42);
   color: var(--paper);
   font: inherit;
+}
+
+.online-panel input {
   text-transform: uppercase;
 }
 
-.online-panel button {
+.online-panel button,
+.profile-panel button {
   min-height: 34px;
 }
 
 .online-panel p,
-.online-panel em {
+.online-panel em,
+.profile-panel p,
+.profile-panel small {
   margin: 0;
   color: var(--paper-dim);
   font-size: 12px;
   line-height: 1.35;
 }
 
-.online-panel span {
+.online-panel span,
+.profile-panel span {
   color: var(--gold);
   word-break: break-all;
 }
@@ -3986,6 +3997,33 @@ body {
 .online-panel em {
   color: var(--danger);
   font-style: normal;
+}
+
+.profile-panel label {
+  display: grid;
+  gap: 4px;
+  color: var(--paper-dim);
+  font-size: 11px;
+}
+
+.profile-panel ul {
+  display: grid;
+  gap: 5px;
+  max-height: 86px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.profile-panel li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 5px;
 }
 
 .turn-banner {
@@ -5009,6 +5047,25 @@ body {
 .app-shell .fan-card {
   width: clamp(116px, 6.9vw, 140px);
   height: clamp(146px, 15vh, 178px);
+}
+
+/* Deckbuilder sidebar: profile and online controls need their own scroll area. */
+.setup-shell .deck-panel {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  overflow-y: auto;
+  padding-right: 10px;
+}
+
+.setup-shell .deck-list {
+  max-height: clamp(150px, 22vh, 260px);
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.setup-shell .deck-panel > p {
+  margin-bottom: 0;
 }
 
 @keyframes turn-banner-fade {

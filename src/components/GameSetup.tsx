@@ -6,19 +6,27 @@ import type { FactionId } from "../game/types";
 
 interface GameSetupProps {
   deck: string[];
+  friendCodeDraft: string;
+  friends: FriendEntry[];
   onlineError?: string;
   onlineRoomCode: string;
   onlineServerUrl: string;
   onlineShareLink?: string;
   onlineStatus?: string;
+  playerFriendCode: string;
+  playerName: string;
   selectedFaction: FactionId;
   onAddCard: (cardId: string) => void;
+  onAddFriend: () => void;
   onClearDeck: () => void;
   onCreateOnlineRoom: () => void;
   onJoinOnlineRoom: () => void;
   onLoadStarterDeck: () => void;
   onOnlineRoomCodeChange: (roomCode: string) => void;
   onOnlineServerUrlChange: (serverUrl: string) => void;
+  onPlayerNameChange: (playerName: string) => void;
+  onFriendCodeDraftChange: (friendCode: string) => void;
+  onRemoveFriend: (friendCode: string) => void;
   onRemoveCard: (index: number) => void;
   onSelectFaction: (faction: FactionId) => void;
   onStart: () => void;
@@ -26,19 +34,27 @@ interface GameSetupProps {
 
 export function GameSetup({
   deck,
+  friendCodeDraft,
+  friends,
   onlineError,
   onlineRoomCode,
   onlineServerUrl,
   onlineShareLink,
   onlineStatus,
+  playerFriendCode,
+  playerName,
   selectedFaction,
   onAddCard,
+  onAddFriend,
   onClearDeck,
   onCreateOnlineRoom,
   onJoinOnlineRoom,
   onLoadStarterDeck,
   onOnlineRoomCodeChange,
   onOnlineServerUrlChange,
+  onPlayerNameChange,
+  onFriendCodeDraftChange,
+  onRemoveFriend,
   onRemoveCard,
   onSelectFaction,
   onStart,
@@ -178,6 +194,47 @@ export function GameSetup({
           <button className="start-match" disabled={!deckValidation.valid} onClick={onStart} type="button">
             Spiel starten
           </button>
+          <div className="profile-panel">
+            <strong>Profil</strong>
+            <label>
+              Name
+              <input
+                maxLength={18}
+                onChange={(event) => onPlayerNameChange(event.target.value)}
+                placeholder="Dein Name"
+                value={playerName}
+              />
+            </label>
+            <p>
+              Freundescode: <span>{playerFriendCode}</span>
+            </p>
+            <div>
+              <input
+                aria-label="Freundescode"
+                maxLength={12}
+                onChange={(event) => onFriendCodeDraftChange(event.target.value.toUpperCase())}
+                placeholder="Freundescode"
+                value={friendCodeDraft}
+              />
+              <button onClick={onAddFriend} type="button">
+                Add
+              </button>
+            </div>
+            {friends.length ? (
+              <ul>
+                {friends.map((friend) => (
+                  <li key={friend.code}>
+                    <span>{friend.code}</span>
+                    <button onClick={() => onRemoveFriend(friend.code)} type="button">
+                      x
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <small>Noch keine Freunde gespeichert.</small>
+            )}
+          </div>
           <div className="online-panel">
             <strong>Online 1v1</strong>
             <input
@@ -215,6 +272,10 @@ export function GameSetup({
       </section>
     </main>
   );
+}
+
+export interface FriendEntry {
+  code: string;
 }
 
 export function deckForFaction(faction: FactionId) {

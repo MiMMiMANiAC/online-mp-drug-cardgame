@@ -14,6 +14,8 @@ interface OnlinePlayer {
   socketId: string;
   faction: FactionId;
   deck: string[];
+  displayName: string;
+  friendCode: string;
 }
 
 interface RoomState {
@@ -26,6 +28,10 @@ interface RoomState {
 }
 
 interface RoomPayload {
+  opponentFriendCode?: string;
+  opponentName?: string;
+  playerFriendCode?: string;
+  playerName?: string;
   roomCode: string;
   role: Seat;
   status: RoomStatus;
@@ -33,6 +39,8 @@ interface RoomPayload {
 }
 
 interface JoinPayload {
+  displayName?: string;
+  friendCode?: string;
   roomCode?: string;
   faction?: FactionId;
   deck?: string[];
@@ -224,7 +232,13 @@ function broadcastRoom(room: RoomState) {
 }
 
 function emitRoomPayload(target: Socket | ReturnType<typeof io.to>, room: RoomState, role: Seat) {
+  const own = role === "player" ? room.player : room.opponent;
+  const other = role === "player" ? room.opponent : room.player;
   const payload: RoomPayload = {
+    opponentFriendCode: other?.friendCode,
+    opponentName: other?.displayName,
+    playerFriendCode: own?.friendCode,
+    playerName: own?.displayName,
     roomCode: room.code,
     role,
     status: room.status,
@@ -312,6 +326,8 @@ function makeOnlinePlayer(socket: Socket, payload: JoinPayload): OnlinePlayer {
     socketId: socket.id,
     faction,
     deck: validDeck(payload.deck) ? payload.deck : starterDecks[faction],
+    displayName: normalizeDisplayName(payload.displayName),
+    friendCode: normalizeFriendCode(payload.friendCode),
   };
 }
 
@@ -333,6 +349,16 @@ function normalizeFaction(faction: FactionId | undefined): "raver" | "awareness"
 function normalizeRoomCode(roomCode: string | undefined) {
   const code = roomCode?.trim().toUpperCase();
   return code && /^[A-Z0-9]{4}$/.test(code) ? code : null;
+}
+
+function normalizeDisplayName(displayName: string | undefined) {
+  const clean = displayName?.trim().replace(/\s+/g, " ").slice(0, 18);
+  return clean || "Spieler";
+}
+
+function normalizeFriendCode(friendCode: string | undefined) {
+  const clean = friendCode?.trim().toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 12);
+  return clean || "OHNE-CODE";
 }
 
 function uniqueRoomCode() {
