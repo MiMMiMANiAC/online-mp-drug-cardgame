@@ -7,7 +7,14 @@ import { MulliganScreen } from "./components/MulliganScreen";
 import { TurnBanner } from "./components/TurnBanner";
 import { playSound, setMasterVolume, setSoundEnabled, unlockAudio } from "./audio/sound";
 import { cardById } from "./game/cards";
-import { attackOpponentHero, attackOpponentMinion, endTurn, playCard as playGameCard, useHeroPower as useGameHeroPower } from "./game/actions";
+import {
+  attackOpponentHero,
+  attackOpponentMinion,
+  emergencyAction as useEmergencyGameAction,
+  endTurn,
+  playCard as playGameCard,
+  useHeroPower as useGameHeroPower,
+} from "./game/actions";
 import { buildMatchReport } from "./game/report";
 import { confirmMulligan, createGameState, initialGameState, starterDecks } from "./game/state";
 import { canPlayCard, targetForCard } from "./game/rules";
@@ -256,6 +263,20 @@ export function App() {
       socketRef.current?.emit("game:hero-power", { roomCode: onlineRoomCode, targetId });
     } else {
       setState((current) => useGameHeroPower(current, targetId));
+    }
+    setSelectedCardId(null);
+    setSelectedAttackerId(null);
+    setSelectedHeroPower(false);
+  }
+
+  function useEmergencyAction() {
+    if (state.winner || state.activePlayer !== "player") return;
+    unlockAudio();
+    playSound("button");
+    if (onlineMode) {
+      socketRef.current?.emit("game:emergency-action", { roomCode: onlineRoomCode });
+    } else {
+      setState((current) => useEmergencyGameAction(current));
     }
     setSelectedCardId(null);
     setSelectedAttackerId(null);
@@ -710,6 +731,7 @@ export function App() {
           onAttackOpponentMinion={attackMinion}
           onSelectHandCard={selectCard}
           onPlayHandCard={playHandCard}
+          onEmergencyAction={useEmergencyAction}
           onUseHeroPower={useHeroPower}
           onPlaySelected={playSelectedCard}
           onPlaySelectedOnTarget={playSelectedCardOnTarget}

@@ -3,7 +3,14 @@ import { readFile } from "node:fs/promises";
 import { extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Server, type Socket } from "socket.io";
-import { attackHeroForSide, attackMinionForSide, endTurnForSide, playCardForSide, useHeroPowerForSide } from "../src/game/actions";
+import {
+  attackHeroForSide,
+  attackMinionForSide,
+  emergencyActionForSide,
+  endTurnForSide,
+  playCardForSide,
+  useHeroPowerForSide,
+} from "../src/game/actions";
 import { confirmMulliganForSide, createGameState, markGameStarted, starterDecks } from "../src/game/state";
 import type { FactionId, GameState } from "../src/game/types";
 
@@ -151,6 +158,10 @@ io.on("connection", (socket) => {
 
   socket.on("game:hero-power", (payload: { roomCode?: string; targetId?: string }) => {
     updateRoomState(socket, payload.roomCode, (state, role) => useHeroPowerForSide(state, role, payload.targetId));
+  });
+
+  socket.on("game:emergency-action", (payload: { roomCode?: string }) => {
+    updateRoomState(socket, payload.roomCode, (state, role) => emergencyActionForSide(state, role));
   });
 
   socket.on("game:mulligan-confirm", (payload: { roomCode?: string; selectedIndexes?: number[] }) => {

@@ -31,6 +31,10 @@ export function useHeroPower(state: GameState, targetId?: string): GameState {
   return useHeroPowerForSide(state, "player", targetId);
 }
 
+export function emergencyAction(state: GameState): GameState {
+  return emergencyActionForSide(state, "player");
+}
+
 export function useHeroPowerForSide(state: GameState, side: Side, targetId?: string): GameState {
   if (state.winner) return state;
   if (state.activePlayer !== side) return addEvent(state, "Du bist nicht am Zug.", "warning");
@@ -98,6 +102,30 @@ export function useHeroPowerForSide(state: GameState, side: Side, targetId?: str
   }
 
   return addEvent(state, "Diese Klasse hat noch keinen aktiven Heldenskill.", "warning");
+}
+
+export function emergencyActionForSide(state: GameState, side: Side): GameState {
+  if (state.winner) return state;
+  if (state.activePlayer !== side) return addEvent(state, "Du bist nicht am Zug.", "warning");
+
+  const { selfKey } = keysFor(side);
+  const actor = side === "player" ? "Spieler 1" : "Spieler 2";
+  const stats = state[selfKey];
+  let next: GameState = {
+    ...state,
+    [selfKey]: {
+      ...stats,
+      control: Math.min(10, stats.control + 1),
+      fahndungsdruck: Math.max(0, stats.fahndungsdruck - 2),
+      rausch: Math.max(0, stats.rausch - 1),
+    },
+  };
+
+  next = addEvent(next, `${actor} taucht ab: -2 Fahndung, -1 Rausch, +1 Kontrolle.`, "recovery", {
+    details:
+      "Notfallaktion: Du bekommst keine Karte und keinen Angriff dazu. Sie stabilisiert eine schlechte Lage und beendet deinen Zug.",
+  });
+  return endTurnForSide(next, side);
 }
 
 export function playCardForSide(state: GameState, side: Side, cardId: string, targetId?: string): GameState {
@@ -283,10 +311,12 @@ export function endTurnForSide(state: GameState, side: Side): GameState {
 function refreshStartOfTurn(stats: PlayerStats): PlayerStats {
   const maxCash = Math.min(10, stats.maxCash + 1);
   const cashPenalty = stats.fahndungsdruck >= 9 ? 3 : stats.fahndungsdruck >= 6 ? 2 : stats.fahndungsdruck >= 3 ? 1 : 0;
+  const minimumPlayableCash = maxCash >= 2 ? 2 : maxCash;
+  const availableCash = Math.min(maxCash, Math.max(minimumPlayableCash, maxCash - cashPenalty));
   return {
     ...stats,
     maxCash,
-    cash: Math.max(0, maxCash - cashPenalty),
+    cash: availableCash,
     control: Math.max(0, Math.min(10, stats.control + 1 - (stats.fahndungsdruck >= 6 ? 1 : 0))),
     rausch: Math.max(0, stats.rausch - 1),
     stability: Math.max(0, stats.stability - stats.abhaengigkeit),

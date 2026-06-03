@@ -1,5 +1,14 @@
 import assert from "node:assert/strict";
-import { attackOpponentHero, attackOpponentMinion, endTurn, playCard, useHeroPower, useHeroPowerForSide } from "../src/game/actions";
+import {
+  attackOpponentHero,
+  attackOpponentMinion,
+  emergencyAction,
+  emergencyActionForSide,
+  endTurn,
+  playCard,
+  useHeroPower,
+  useHeroPowerForSide,
+} from "../src/game/actions";
 import { cardById, cards } from "../src/game/cards";
 import { buildMatchReport } from "../src/game/report";
 import {
@@ -349,6 +358,46 @@ let midRiskState = {
 midRiskState = endTurn(midRiskState);
 assert.ok(midRiskState.events.some((event) => event.text.includes("Fahndung blockiert 1 Cash")), "Fahndung 3+ muss Cash blockieren.");
 assert.ok(midRiskState.events.some((event) => event.text.includes("Rausch kostet 1 Stabilitaet")), "Rausch 4+ muss Stabilitaet kosten.");
+
+let lockedRiskState = {
+  ...initialGameState,
+  hand: [],
+  deck: [],
+  opponentHand: [],
+  opponentDeck: [],
+  player: { ...initialGameState.player, maxCash: 1, cash: 1, fahndungsdruck: 10 },
+  opponent: { ...initialGameState.opponent, maxCash: 1, cash: 1 },
+  playerBoard: [],
+  opponentBoard: [],
+};
+lockedRiskState = endTurn(lockedRiskState);
+assert.equal(lockedRiskState.player.cash, 2, "Hohe Fahndung darf den Startzug nicht unter 2 Cash druecken.");
+
+let emergencyState = {
+  ...initialGameState,
+  hand: [],
+  deck: [],
+  opponentHand: [],
+  opponentDeck: [],
+  activePlayer: "player" as const,
+  player: { ...initialGameState.player, maxCash: 6, cash: 0, fahndungsdruck: 8, rausch: 4, control: 3 },
+  opponent: { ...initialGameState.opponent, maxCash: 6, cash: 6 },
+  playerBoard: [],
+  opponentBoard: [],
+};
+emergencyState = emergencyAction(emergencyState);
+assert.equal(emergencyState.player.fahndungsdruck, 6, "Abtauchen muss Fahndung um 2 reduzieren.");
+assert.equal(emergencyState.player.rausch, 3, "Abtauchen muss Rausch um 1 reduzieren.");
+assert.equal(emergencyState.activePlayer, "opponent", "Abtauchen muss den Zug beenden.");
+
+let opponentEmergencyState = {
+  ...initialGameState,
+  activePlayer: "opponent" as const,
+  opponent: { ...initialGameState.opponent, maxCash: 6, cash: 0, fahndungsdruck: 5, rausch: 3, control: 4 },
+};
+opponentEmergencyState = emergencyActionForSide(opponentEmergencyState, "opponent");
+assert.equal(opponentEmergencyState.opponent.fahndungsdruck, 3, "Multiplayer-Abtauchen muss fuer Spieler 2 Fahndung reduzieren.");
+assert.equal(opponentEmergencyState.activePlayer, "player", "Multiplayer-Abtauchen muss den Zug zu Spieler 1 geben.");
 
 const winningState = {
   ...initialGameState,

@@ -21,6 +21,7 @@ interface GameBoardProps {
   onPlaySelected: () => void;
   onPlaySelectedOnTarget: (targetId: string) => void;
   onPlayHandCard: (cardId: string, targetId?: string) => void;
+  onEmergencyAction: () => void;
   onUseHeroPower: (targetId?: string) => void;
   onSelectHandCard: (cardId: string) => void;
   opponentTitle: string;
@@ -43,6 +44,7 @@ export function GameBoard({
   onPlaySelected,
   onPlaySelectedOnTarget,
   onPlayHandCard,
+  onEmergencyAction,
   onUseHeroPower,
   onSelectHandCard,
   opponentTitle,
@@ -148,6 +150,14 @@ export function GameBoard({
             type="button"
           >
             {heroPower?.name ?? "Heldenskill"}
+          </button>
+          <button
+            className="emergency-action-button"
+            disabled={state.activePlayer !== "player" || Boolean(state.winner)}
+            onClick={onEmergencyAction}
+            type="button"
+          >
+            Abtauchen
           </button>
           <button className="end-turn board-end-turn" onClick={onEndTurn} type="button">
             Zug beenden
@@ -385,6 +395,7 @@ function CenterCardInfo({ inspected }: { inspected: InspectedCard }) {
 }
 
 function ResourceBar({ stats }: { stats: PlayerStats }) {
+  const blockedCash = stats.fahndungsdruck >= 9 ? 3 : stats.fahndungsdruck >= 6 ? 2 : stats.fahndungsdruck >= 3 ? 1 : 0;
   return (
     <div className="resource-bar" aria-label="Ressourcen">
       <strong>
@@ -396,6 +407,7 @@ function ResourceBar({ stats }: { stats: PlayerStats }) {
         ))}
       </div>
       <span>Kontrolle {stats.control}/10</span>
+      {blockedCash > 0 ? <small>Fahndung blockiert {blockedCash} Cash. Minimum: 2.</small> : null}
     </div>
   );
 }
