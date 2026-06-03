@@ -67,6 +67,7 @@ export function App() {
   const [soundOn, setSoundOn] = useState(true);
   const [soundVolume, setSoundVolume] = useState(0.8);
   const [actionPopup, setActionPopup] = useState<{ title: string; text: string; visible: boolean } | null>(null);
+  const [diagnosticPopup, setDiagnosticPopup] = useState<{ title: string; text: string; visible: boolean } | null>(null);
   const [turnBanner, setTurnBanner] = useState<{ message: string; tone: TurnBannerTone; visible: boolean }>({
     message: "Du bist am Zug",
     tone: "player",
@@ -198,6 +199,7 @@ export function App() {
     unlockAudio();
     playSound("card-play");
     if (onlineMode) {
+      showDiagnostic("Online-Diagnose", `Client sendet Karte: ${selectedCard?.name ?? selectedCardId}.`);
       socketRef.current?.emit("game:play-card", { roomCode: onlineRoomCode, cardId: selectedCardId });
     } else {
       setState((current) => playGameCard(current, selectedCardId));
@@ -210,7 +212,14 @@ export function App() {
     if (!selectedCardId || !selectedTarget || !canPlaySelected || state.winner) return;
     unlockAudio();
     playSound("card-play");
+    const targetCard =
+      [...state.playerBoard, ...state.opponentBoard].find((boardCard) => boardCard.instanceId === targetId)?.cardId ?? targetId;
+    const targetName = cardById.get(targetCard)?.name ?? targetCard;
     if (onlineMode) {
+      showDiagnostic(
+        "Online-Diagnose",
+        `Zielklick angekommen: ${selectedCard?.name ?? selectedCardId} -> ${targetName}. Sende an Server.`,
+      );
       socketRef.current?.emit("game:play-card", { roomCode: onlineRoomCode, cardId: selectedCardId, targetId });
     } else {
       setState((current) => playGameCard(current, selectedCardId, targetId));
@@ -236,6 +245,10 @@ export function App() {
     unlockAudio();
     playSound("card-play");
     if (onlineMode) {
+      showDiagnostic(
+        "Online-Diagnose",
+        targetId ? `Client sendet ${card.name} auf Ziel ${targetId}.` : `Client sendet ${card.name}.`,
+      );
       socketRef.current?.emit("game:play-card", { roomCode: onlineRoomCode, cardId, targetId });
     } else {
       setState((current) => playGameCard(current, cardId, targetId));
@@ -281,6 +294,13 @@ export function App() {
     setSelectedCardId(null);
     setSelectedAttackerId(null);
     setSelectedHeroPower(false);
+  }
+
+  function showDiagnostic(title: string, text: string) {
+    setDiagnosticPopup({ title, text, visible: true });
+    window.setTimeout(() => {
+      setDiagnosticPopup((current) => (current ? { ...current, visible: false } : current));
+    }, 2600);
   }
 
 
@@ -444,6 +464,10 @@ export function App() {
     });
     socket.on("room:error", (payload: { message: string }) => {
       setOnlineError(payload.message);
+      showDiagnostic("Server lehnt ab", payload.message);
+    });
+    socket.on("game:debug", (payload: { message: string }) => {
+      showDiagnostic("Server-Diagnose", payload.message);
     });
     socket.on("game:state", (payload: OnlineStatePayload | typeof state) => {
       const nextState = "state" in payload ? payload.state : payload;
@@ -700,6 +724,12 @@ export function App() {
         <div className={`action-popup ${actionPopup.visible ? "is-visible" : ""}`}>
           <strong>{actionPopup.title}</strong>
           <span>{actionPopup.text}</span>
+        </div>
+      ) : null}
+      {diagnosticPopup ? (
+        <div className={`action-popup diagnostic-popup ${diagnosticPopup.visible ? "is-visible" : ""}`}>
+          <strong>{diagnosticPopup.title}</strong>
+          <span>{diagnosticPopup.text}</span>
         </div>
       ) : null}
       <header className="topbar">

@@ -135,6 +135,11 @@ io.on("connection", (socket) => {
   });
 
   socket.on("game:play-card", (payload: { roomCode?: string; cardId?: string; targetId?: string }) => {
+    socket.emit("game:debug", {
+      message: payload.targetId
+        ? `Server empfaengt Karte ${payload.cardId ?? "?"} auf Ziel ${payload.targetId}.`
+        : `Server empfaengt Karte ${payload.cardId ?? "?"}.`,
+    });
     updateRoomState(socket, payload.roomCode, (state, role) =>
       payload.cardId ? playCardForSide(state, role, payload.cardId, payload.targetId) : state,
     );
@@ -205,6 +210,7 @@ function updateRoomState(socket: Socket, roomCode: string | undefined, apply: (s
     return;
   }
   room.state = apply(room.state, role);
+  socket.emit("game:debug", { message: `Server-Ergebnis: ${room.state.events[0]?.text ?? "keine Aenderung"}` });
   broadcastRoom(room);
 }
 

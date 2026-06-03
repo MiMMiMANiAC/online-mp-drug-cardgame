@@ -100,7 +100,7 @@ export function GameBoard({
         />
 
         <div
-          className="battlefield-center is-drop-zone"
+          className={`battlefield-center is-drop-zone ${selectedTarget || selectedAttackerId || selectedHeroPower ? "is-targeting" : ""}`}
           aria-label="Kampfzone"
           onDragOver={(event) => {
             const cardId = getDraggedCardId(event);
