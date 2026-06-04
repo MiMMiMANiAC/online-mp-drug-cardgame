@@ -240,7 +240,7 @@ export function App() {
     playSound("card-play");
     if (onlineMode) {
       showDiagnostic("Online-Diagnose", `Client sendet Karte: ${selectedCard?.name ?? selectedCardId}.`);
-      socketRef.current?.emit("game:play-card", { roomCode: onlineRoomCode, cardId: selectedCardId });
+      socketRef.current?.emit("game:play-card", onlineActionPayload({ cardId: selectedCardId }));
     } else {
       setState((current) => playGameCard(current, selectedCardId));
     }
@@ -260,7 +260,7 @@ export function App() {
         "Online-Diagnose",
         `Zielklick angekommen: ${selectedCard?.name ?? selectedCardId} -> ${targetName}. Sende an Server.`,
       );
-      socketRef.current?.emit("game:play-card", { roomCode: onlineRoomCode, cardId: selectedCardId, targetId });
+      socketRef.current?.emit("game:play-card", onlineActionPayload({ cardId: selectedCardId, targetId }));
     } else {
       setState((current) => playGameCard(current, selectedCardId, targetId));
     }
@@ -289,7 +289,7 @@ export function App() {
         "Online-Diagnose",
         targetId ? `Client sendet ${card.name} auf Ziel ${targetId}.` : `Client sendet ${card.name}.`,
       );
-      socketRef.current?.emit("game:play-card", { roomCode: onlineRoomCode, cardId, targetId });
+      socketRef.current?.emit("game:play-card", onlineActionPayload({ cardId, targetId }));
     } else {
       setState((current) => playGameCard(current, cardId, targetId));
     }
@@ -313,7 +313,7 @@ export function App() {
     unlockAudio();
     playSound("card-play");
     if (onlineMode) {
-      socketRef.current?.emit("game:hero-power", { roomCode: onlineRoomCode, targetId });
+      socketRef.current?.emit("game:hero-power", onlineActionPayload({ targetId }));
     } else {
       setState((current) => useGameHeroPower(current, targetId));
     }
@@ -327,7 +327,7 @@ export function App() {
     unlockAudio();
     playSound("button");
     if (onlineMode) {
-      socketRef.current?.emit("game:emergency-action", { roomCode: onlineRoomCode });
+      socketRef.current?.emit("game:emergency-action", onlineActionPayload());
     } else {
       setState((current) => useEmergencyGameAction(current));
     }
@@ -341,6 +341,10 @@ export function App() {
     window.setTimeout(() => {
       setDiagnosticPopup((current) => (current ? { ...current, visible: false } : current));
     }, 2600);
+  }
+
+  function onlineActionPayload(extra: Record<string, string | undefined> = {}) {
+    return { clientId: onlineClientId, roomCode: onlineRoomCode, ...extra };
   }
 
 
@@ -358,7 +362,7 @@ export function App() {
     unlockAudio();
     playSound("attack");
     if (onlineMode) {
-      socketRef.current?.emit("game:attack-hero", { roomCode: onlineRoomCode, attackerId: selectedAttackerId });
+      socketRef.current?.emit("game:attack-hero", onlineActionPayload({ attackerId: selectedAttackerId }));
     } else {
       setState((current) => attackOpponentHero(current, selectedAttackerId));
     }
@@ -371,7 +375,7 @@ export function App() {
     unlockAudio();
     playSound("hit");
     if (onlineMode) {
-      socketRef.current?.emit("game:attack-minion", { roomCode: onlineRoomCode, attackerId: selectedAttackerId, targetId });
+      socketRef.current?.emit("game:attack-minion", onlineActionPayload({ attackerId: selectedAttackerId, targetId }));
     } else {
       setState((current) => attackOpponentMinion(current, selectedAttackerId, targetId));
     }
@@ -653,7 +657,10 @@ export function App() {
     unlockAudio();
     lastTurnRef.current = "";
     if (onlineMode) {
-      socketRef.current?.emit("game:mulligan-confirm", { roomCode: onlineRoomCode, selectedIndexes: mulliganIndexes });
+      socketRef.current?.emit("game:mulligan-confirm", {
+        ...onlineActionPayload(),
+        selectedIndexes: mulliganIndexes,
+      });
       setOnlineMulliganConfirmed(true);
       setMulliganIndexes([]);
       playSound("button");
@@ -881,7 +888,7 @@ export function App() {
             setSelectedCardId(null);
             setSelectedAttackerId(null);
             setSelectedHeroPower(false);
-            if (onlineMode) socketRef.current?.emit("game:end-turn", { roomCode: onlineRoomCode });
+            if (onlineMode) socketRef.current?.emit("game:end-turn", onlineActionPayload());
             else setState((current) => endTurn(current));
           }}
         />

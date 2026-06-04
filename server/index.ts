@@ -60,6 +60,14 @@ interface JoinPayload {
   deck?: string[];
 }
 
+interface GameActionPayload {
+  attackerId?: string;
+  cardId?: string;
+  clientId?: string;
+  roomCode?: string;
+  targetId?: string;
+}
+
 const rooms = new Map<string, RoomState>();
 const socketRooms = new Map<string, string>();
 const ROOM_RECONNECT_TTL_MS = 10 * 60 * 1000;
@@ -170,48 +178,60 @@ io.on("connection", (socket) => {
     reconnectPlayer(socket, room, role, payload);
   });
 
-  socket.on("game:play-card", (payload: { roomCode?: string; cardId?: string; targetId?: string }) => {
+  socket.on("game:play-card", (payload: GameActionPayload) => {
     socket.emit("game:debug", {
       message: payload.targetId
         ? `Server empfaengt Karte ${payload.cardId ?? "?"} auf Ziel ${payload.targetId}.`
         : `Server empfaengt Karte ${payload.cardId ?? "?"}.`,
     });
-    updateRoomState(socket, payload.roomCode, (state, role) =>
-      payload.cardId ? playCardForSide(state, role, payload.cardId, payload.targetId) : state,
+    updateRoomState(
+      socket,
+      payload.roomCode,
+      (state, role) => (payload.cardId ? playCardForSide(state, role, payload.cardId, payload.targetId) : state),
+      payload.clientId,
     );
   });
 
-  socket.on("game:attack-hero", (payload: { roomCode?: string; attackerId?: string }) => {
-    updateRoomState(socket, payload.roomCode, (state, role) =>
-      payload.attackerId ? attackHeroForSide(state, role, payload.attackerId) : state,
+  socket.on("game:attack-hero", (payload: GameActionPayload) => {
+    updateRoomState(
+      socket,
+      payload.roomCode,
+      (state, role) => (payload.attackerId ? attackHeroForSide(state, role, payload.attackerId) : state),
+      payload.clientId,
     );
   });
 
-  socket.on("game:attack-minion", (payload: { roomCode?: string; attackerId?: string; targetId?: string }) => {
-    updateRoomState(socket, payload.roomCode, (state, role) =>
-      payload.attackerId && payload.targetId ? attackMinionForSide(state, role, payload.attackerId, payload.targetId) : state,
+  socket.on("game:attack-minion", (payload: GameActionPayload) => {
+    updateRoomState(
+      socket,
+      payload.roomCode,
+      (state, role) =>
+        payload.attackerId && payload.targetId ? attackMinionForSide(state, role, payload.attackerId, payload.targetId) : state,
+      payload.clientId,
     );
   });
 
-  socket.on("game:end-turn", (payload: { roomCode?: string }) => {
-    updateRoomState(socket, payload.roomCode, (state, role) => endTurnForSide(state, role));
+  socket.on("game:end-turn", (payload: GameActionPayload) => {
+    updateRoomState(socket, payload.roomCode, (state, role) => endTurnForSide(state, role), payload.clientId);
   });
 
-  socket.on("game:hero-power", (payload: { roomCode?: string; targetId?: string }) => {
-    updateRoomState(socket, payload.roomCode, (state, role) => useHeroPowerForSide(state, role, payload.targetId));
+  socket.on("game:hero-power", (payload: GameActionPayload) => {
+    updateRoomState(socket, payload.roomCode, (state, role) => useHeroPowerForSide(state, role, payload.targetId), payload.clientId);
   });
 
-  socket.on("game:emergency-action", (payload: { roomCode?: string }) => {
-    updateRoomState(socket, payload.roomCode, (state, role) => emergencyActionForSide(state, role));
+  socket.on("game:emergency-action", (payload: GameActionPayload) => {
+    updateRoomState(socket, payload.roomCode, (state, role) => emergencyActionForSide(state, role), payload.clientId);
   });
 
-  socket.on("game:mulligan-confirm", (payload: { roomCode?: string; selectedIndexes?: number[] }) => {
+  socket.on("game:mulligan-confirm", (payload: { clientId?: string; roomCode?: string; selectedIndexes?: number[] }) => {
     const code = normalizeRoomCode(payload.roomCode) ?? socketRooms.get(socket.id);
     const room = code ? rooms.get(code) : undefined;
     if (!room?.state || room.status !== "mulligan") {
       socket.emit("room:error", { message: "Mulligan ist nicht aktiv." });
       return;
     }
+    const reconnectRole = roleForClient(room, normalizeClientId(payload.clientId));
+    if (reconnectRole && room[reconnectRole]?.socketId !== socket.id) reconnectPlayer(socket, room, reconnectRole, payload);
     const role = roleForSocket(room, socket.id);
     if (!role) {
       socket.emit("room:error", { message: "Du sitzt nicht in diesem Raum." });
@@ -234,11 +254,30 @@ io.on("connection", (socket) => {
   });
 });
 
-function updateRoomState(socket: Socket, roomCode: string | undefined, apply: (state: GameState, role: Seat) => GameState) {
+function updateRoomState(
+  socket: Socket,
+  roomCode: string | undefined,
+  apply: (state: GameState, role: Seat) => GameState,
+  clientId?: string,
+) {
   const code = socketRooms.get(socket.id) ?? normalizeRoomCode(roomCode);
   const room = code ? rooms.get(code) : undefined;
-  if (!room?.state || room.status !== "playing") {
-    socket.emit("room:error", { message: "Spielraum ist noch nicht bereit." });
+  if (!room) {
+    socket.emit("room:error", { message: `Raum ${code ?? "?"} existiert auf dem Server nicht mehr.` });
+    return;
+  }
+
+  const reconnectRole = roleForClient(room, normalizeClientId(clientId));
+  if (reconnectRole && room[reconnectRole]?.socketId !== socket.id) {
+    reconnectPlayer(socket, room, reconnectRole, { clientId, roomCode: code ?? undefined });
+  }
+
+  if (!room.state) {
+    socket.emit("room:error", { message: `Raum ${room.code} hat keinen Spielstand mehr. Status: ${room.status}.` });
+    return;
+  }
+  if (room.status !== "playing") {
+    socket.emit("room:error", { message: `Raum ${room.code} ist nicht im Spielmodus. Status: ${room.status}.` });
     return;
   }
   const role = roleForSocket(room, socket.id);
