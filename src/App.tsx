@@ -36,6 +36,11 @@ type OnlineStatePayload = {
   status: OnlineStatus;
   turnEndsAt?: number;
 };
+type RoomErrorPayload = {
+  code?: "ROOM_NOT_FOUND" | string;
+  message: string;
+  roomCode?: string;
+};
 type RoomUpdatePayload = {
   opponentFriendCode?: string;
   opponentName?: string;
@@ -89,6 +94,9 @@ export function App() {
     visible: false,
   });
   const [state, setState] = useState(initialGameState);
+  const latestOnlineStateRef = useRef(initialGameState);
+  const onlineRoleRef = useRef<OnlineRole | null>(null);
+  const onlineRoomCodeRef = useRef("");
   const socketRef = useRef<Socket | null>(null);
   const lastTurnRef = useRef("");
 
@@ -347,6 +355,25 @@ export function App() {
     return { clientId: onlineClientId, roomCode: onlineRoomCode, ...extra };
   }
 
+  function recoverOnlineRoom(socket: Socket, missingRoomCode?: string) {
+    const roomCode = normalizeRoomCode(missingRoomCode ?? onlineRoomCodeRef.current ?? onlineRoomCode);
+    const role = onlineRoleRef.current ?? onlineRole;
+    if (!roomCode || !role) {
+      setOnlineStatus("Recovery nicht moeglich: Raum oder Spielerrolle fehlt.");
+      return;
+    }
+
+    setOnlineStatus(`Raum ${roomCode} wird aus dem letzten Spielstand wiederhergestellt...`);
+    socket.emit("room:recover", {
+      clientId: onlineClientId,
+      displayName: cleanPlayerName(playerName),
+      friendCode: playerFriendCode,
+      role,
+      roomCode,
+      state: latestOnlineStateRef.current,
+    });
+  }
+
 
   function selectAttacker(instanceId: string) {
     if (state.winner || state.activePlayer !== "player") return;
@@ -504,6 +531,8 @@ export function App() {
       setOnlineMode(true);
       setOnlineRoomCode(payload.roomCode);
       setOnlineRole(payload.role);
+      onlineRoomCodeRef.current = payload.roomCode;
+      onlineRoleRef.current = payload.role;
       setOnlineOwnName(payload.playerName ?? "");
       setOnlineOpponentName(payload.opponentName ?? "");
       saveOnlineSession({
@@ -524,9 +553,12 @@ export function App() {
             : `Raum ${payload.roomCode}: Online-Spiel laeuft.`,
       );
     });
-    socket.on("room:error", (payload: { message: string }) => {
+    socket.on("room:error", (payload: RoomErrorPayload) => {
       setOnlineError(payload.message);
       showDiagnostic("Server lehnt ab", payload.message);
+      if (payload.code === "ROOM_NOT_FOUND") {
+        recoverOnlineRoom(socket, payload.roomCode);
+      }
     });
     socket.on("room:event", (payload: { text: string }) => {
       setOnlineStatus(payload.text);
@@ -539,6 +571,7 @@ export function App() {
       const status = "state" in payload ? payload.status : "playing";
       const mulliganConfirmed = "state" in payload ? Boolean(payload.mulliganConfirmed) : false;
       const turnEndsAt = "state" in payload ? payload.turnEndsAt ?? null : null;
+      latestOnlineStateRef.current = nextState;
       setState(nextState);
       setOnlineMulliganConfirmed(mulliganConfirmed);
       setOnlineTurnEndsAt(turnEndsAt);

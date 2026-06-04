@@ -68,6 +68,11 @@ interface GameActionPayload {
   targetId?: string;
 }
 
+interface RecoverPayload extends JoinPayload {
+  role?: Seat;
+  state?: GameState;
+}
+
 const rooms = new Map<string, RoomState>();
 const socketRooms = new Map<string, string>();
 const ROOM_RECONNECT_TTL_MS = 10 * 60 * 1000;
@@ -165,7 +170,11 @@ io.on("connection", (socket) => {
 
     const room = rooms.get(code);
     if (!room) {
-      socket.emit("room:error", { message: "Raum nicht gefunden. Erstelle einen neuen Raum." });
+      socket.emit("room:error", {
+        code: "ROOM_NOT_FOUND",
+        message: "Raum nicht gefunden. Recovery wird versucht.",
+        roomCode: code,
+      });
       return;
     }
 
@@ -176,6 +185,54 @@ io.on("connection", (socket) => {
     }
 
     reconnectPlayer(socket, room, role, payload);
+  });
+
+  socket.on("room:recover", (payload: RecoverPayload) => {
+    const code = normalizeRoomCode(payload.roomCode);
+    const clientId = normalizeClientId(payload.clientId);
+    if (!code || !clientId || !payload.state || (payload.role !== "player" && payload.role !== "opponent")) {
+      socket.emit("room:error", { message: "Recovery fehlgeschlagen: Raum, Spieler oder Spielstand fehlt." });
+      return;
+    }
+
+    const existingRoom = rooms.get(code);
+    if (existingRoom?.state) {
+      const role = roleForClient(existingRoom, clientId);
+      if (role) {
+        reconnectPlayer(socket, existingRoom, role, payload);
+        return;
+      }
+      const requestedSeat = existingRoom[payload.role];
+      if (requestedSeat && !requestedSeat.connected && requestedSeat.friendCode === "RECOVERY") {
+        claimRecoveredSeat(socket, existingRoom, payload.role, payload);
+        return;
+      }
+      socket.emit("room:error", { message: "Recovery abgelehnt: Raum existiert bereits." });
+      return;
+    }
+
+    leavePreviousRoom(socket, true);
+    const canonicalState = payload.role === "player" ? payload.state : perspectiveFor(payload.state, "opponent");
+    const room: RoomState = {
+      code,
+      confirmedMulligans: new Set(["player", "opponent"]),
+      player:
+        payload.role === "player"
+          ? makeOnlinePlayer(socket, { ...payload, faction: canonicalState.playerFaction, deck: canonicalState.deck })
+          : makeRecoveredOfflinePlayer("player", canonicalState),
+      opponent:
+        payload.role === "opponent"
+          ? makeOnlinePlayer(socket, { ...payload, faction: canonicalState.opponentFaction, deck: canonicalState.opponentDeck })
+          : makeRecoveredOfflinePlayer("opponent", canonicalState),
+      status: "playing",
+      state: canonicalState,
+    };
+    rooms.set(code, room);
+    socket.join(code);
+    socketRooms.set(socket.id, code);
+    scheduleTurnTimer(room);
+    socket.emit("room:event", { text: `Raum ${code} wurde aus deinem letzten Spielstand wiederhergestellt.` });
+    broadcastRoom(room);
   });
 
   socket.on("game:play-card", (payload: GameActionPayload) => {
@@ -263,7 +320,11 @@ function updateRoomState(
   const code = socketRooms.get(socket.id) ?? normalizeRoomCode(roomCode);
   const room = code ? rooms.get(code) : undefined;
   if (!room) {
-    socket.emit("room:error", { message: `Raum ${code ?? "?"} existiert auf dem Server nicht mehr.` });
+    socket.emit("room:error", {
+      code: "ROOM_NOT_FOUND",
+      message: `Raum ${code ?? "?"} existiert auf dem Server nicht mehr.`,
+      roomCode: code,
+    });
     return;
   }
 
@@ -403,6 +464,27 @@ function reconnectPlayer(socket: Socket, room: RoomState, role: Seat, payload: J
   broadcastRoom(room);
 }
 
+function claimRecoveredSeat(socket: Socket, room: RoomState, role: Seat, payload: JoinPayload) {
+  leavePreviousRoom(socket, true);
+  const player = room[role];
+  if (!player) {
+    socket.emit("room:error", { message: "Recovery fehlgeschlagen: Sitzplatz fehlt." });
+    return;
+  }
+
+  player.clientId = normalizeClientId(payload.clientId) ?? player.clientId;
+  player.socketId = socket.id;
+  player.connected = true;
+  player.disconnectedAt = undefined;
+  player.displayName = normalizeDisplayName(payload.displayName);
+  player.friendCode = normalizeFriendCode(payload.friendCode);
+  socket.join(room.code);
+  socketRooms.set(socket.id, room.code);
+  clearRoomCleanup(room);
+  socket.emit("room:event", { text: "Du bist dem wiederhergestellten Raum beigetreten." });
+  broadcastRoom(room);
+}
+
 function scheduleRoomCleanup(room: RoomState) {
   clearRoomCleanup(room);
   room.cleanupTimer = setTimeout(() => {
@@ -471,6 +553,19 @@ function makeOnlinePlayer(socket: Socket, payload: JoinPayload): OnlinePlayer {
     deck: validDeck(payload.deck) ? payload.deck : starterDecks[faction],
     displayName: normalizeDisplayName(payload.displayName),
     friendCode: normalizeFriendCode(payload.friendCode),
+  };
+}
+
+function makeRecoveredOfflinePlayer(role: Seat, state: GameState): OnlinePlayer {
+  const faction = role === "player" ? state.playerFaction : state.opponentFaction;
+  return {
+    clientId: `recovered-${role}-${Date.now()}`,
+    connected: false,
+    disconnectedAt: Date.now(),
+    faction,
+    deck: role === "player" ? state.deck : state.opponentDeck,
+    displayName: role === "player" ? "Spieler 1" : "Spieler 2",
+    friendCode: "RECOVERY",
   };
 }
 
