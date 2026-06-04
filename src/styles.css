@@ -4882,6 +4882,7 @@ body {
 .options-panel {
   display: grid;
   gap: 10px;
+  min-width: 0;
 }
 
 .pause-actions button,
@@ -4917,6 +4918,12 @@ body {
   border-radius: 8px;
   padding: 10px;
   text-align: left;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.option-row > * {
+  min-width: 0;
 }
 
 .option-row span {
@@ -4933,6 +4940,7 @@ body {
 }
 
 .option-row input {
+  box-sizing: border-box;
   width: 100%;
   accent-color: var(--mint);
 }
@@ -4950,6 +4958,8 @@ body {
   padding: 12px;
   background: rgba(3, 16, 16, 0.56);
   text-align: left;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .update-panel strong {
@@ -4962,6 +4972,9 @@ body {
   color: var(--paper);
   font-size: 13px;
   line-height: 1.35;
+  max-height: 4.1em;
+  overflow: hidden;
+  overflow-wrap: anywhere;
 }
 
 .update-notice {
@@ -4988,6 +5001,7 @@ body {
 .update-notice span {
   font-size: 13px;
   line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .update-notice button {

@@ -12,6 +12,7 @@ import {
   attackOpponentMinion,
   emergencyAction as useEmergencyGameAction,
   endTurn,
+  HERO_POWER_COSTS,
   playCard as playGameCard,
   useHeroPower as useGameHeroPower,
 } from "./game/actions";
@@ -23,10 +24,17 @@ import type { FactionId, GamePhase } from "./game/types";
 type TurnBannerTone = "player" | "opponent" | "victory" | "defeat";
 type OnlineRole = "player" | "opponent";
 type OnlineStatus = "waiting" | "mulligan" | "playing";
+type OnlineSession = {
+  clientId: string;
+  displayName: string;
+  friendCode: string;
+  roomCode: string;
+};
 type OnlineStatePayload = {
   mulliganConfirmed?: boolean;
   state: typeof initialGameState;
   status: OnlineStatus;
+  turnEndsAt?: number;
 };
 type RoomUpdatePayload = {
   opponentFriendCode?: string;
@@ -49,6 +57,9 @@ export function App() {
   const [onlineError, setOnlineError] = useState("");
   const [onlineRole, setOnlineRole] = useState<OnlineRole | null>(null);
   const [onlineMulliganConfirmed, setOnlineMulliganConfirmed] = useState(false);
+  const [onlineClientId] = useState(() => getOrCreateClientId());
+  const [onlineTurnEndsAt, setOnlineTurnEndsAt] = useState<number | null>(null);
+  const [turnSecondsLeft, setTurnSecondsLeft] = useState<number | null>(null);
   const [playerName, setPlayerName] = useState(() => localStorage.getItem("nebenwirkungen-player-name") ?? "Spieler");
   const [playerFriendCode] = useState(() => getOrCreateFriendCode());
   const [friendCodeDraft, setFriendCodeDraft] = useState("");
@@ -90,7 +101,9 @@ export function App() {
     : false;
   const selectedTarget = selectedCardId ? targetForCard(selectedCardId) : null;
   const heroPowerNeedsTarget = state.playerFaction === "awareness";
-  const canUseHeroPower = state.activePlayer === "player" && !state.winner && !state.player.heroPowerUsed && state.player.cash >= 2;
+  const heroPowerCost = HERO_POWER_COSTS[state.playerFaction as keyof typeof HERO_POWER_COSTS] ?? 3;
+  const canUseHeroPower =
+    state.activePlayer === "player" && !state.winner && !state.player.heroPowerUsed && state.player.cash >= heroPowerCost;
   const playerSeat = onlineMode ? onlineOwnName || playerName || (onlineRole === "opponent" ? "Spieler 2" : "Spieler 1") : "Spieler 1";
   const opponentSeat = onlineMode ? onlineOpponentName || (onlineRole === "opponent" ? "Spieler 1" : "Spieler 2") : "Spieler 2";
   const playerPortrait = onlineMode ? (onlineRole === "opponent" ? "P2" : "P1") : "P1";
@@ -193,6 +206,22 @@ export function App() {
       socketRef.current?.disconnect();
     };
   }, []);
+
+  useEffect(() => {
+    if (!onlineTurnEndsAt || screen !== "playing") {
+      setTurnSecondsLeft(null);
+      return;
+    }
+    const turnEndsAt = onlineTurnEndsAt;
+
+    function updateSecondsLeft() {
+      setTurnSecondsLeft(Math.max(0, Math.ceil((turnEndsAt - Date.now()) / 1000)));
+    }
+
+    updateSecondsLeft();
+    const interval = window.setInterval(updateSecondsLeft, 250);
+    return () => window.clearInterval(interval);
+  }, [onlineTurnEndsAt, screen]);
 
   function selectCard(cardId: string) {
     if (state.winner) return;
@@ -394,6 +423,7 @@ export function App() {
     setOnlineShareLink("");
     setOnlineRole(null);
     setOnlineMulliganConfirmed(false);
+    setOnlineTurnEndsAt(null);
     setOnlineOwnName("");
     setOnlineOpponentName("");
     lastTurnRef.current = "";
@@ -401,6 +431,7 @@ export function App() {
     setSelectedAttackerId(null);
     setPlayedCardId("");
     setMulliganIndexes([]);
+    clearOnlineSession();
     setScreen("deckbuilding");
   }
 
@@ -451,6 +482,16 @@ export function App() {
     socket.on("connect", () => {
       setOnlineError("");
       setOnlineStatus("Online-Server verbunden.");
+      const session = loadOnlineSession();
+      if (session) {
+        setOnlineStatus(`Verbinde erneut mit Raum ${session.roomCode}...`);
+        socket.emit("room:reconnect", session);
+      }
+    });
+    socket.on("disconnect", () => {
+      if (onlineMode || loadOnlineSession()) {
+        setOnlineStatus("Verbindung verloren. Reconnect laeuft...");
+      }
     });
     socket.on("connect_error", () => {
       setOnlineError(`Online-Server nicht erreichbar: ${serverUrl}`);
@@ -461,6 +502,12 @@ export function App() {
       setOnlineRole(payload.role);
       setOnlineOwnName(payload.playerName ?? "");
       setOnlineOpponentName(payload.opponentName ?? "");
+      saveOnlineSession({
+        clientId: onlineClientId,
+        displayName: cleanPlayerName(playerName),
+        friendCode: playerFriendCode,
+        roomCode: payload.roomCode,
+      });
       const isDesktopFile = window.location.protocol === "file:";
       const link = isDesktopFile ? `Raumcode: ${payload.roomCode}` : `${window.location.origin}${window.location.pathname}?room=${payload.roomCode}`;
       setOnlineShareLink(link);
@@ -477,6 +524,9 @@ export function App() {
       setOnlineError(payload.message);
       showDiagnostic("Server lehnt ab", payload.message);
     });
+    socket.on("room:event", (payload: { text: string }) => {
+      setOnlineStatus(payload.text);
+    });
     socket.on("game:debug", (payload: { message: string }) => {
       showDiagnostic("Server-Diagnose", payload.message);
     });
@@ -484,8 +534,10 @@ export function App() {
       const nextState = "state" in payload ? payload.state : payload;
       const status = "state" in payload ? payload.status : "playing";
       const mulliganConfirmed = "state" in payload ? Boolean(payload.mulliganConfirmed) : false;
+      const turnEndsAt = "state" in payload ? payload.turnEndsAt ?? null : null;
       setState(nextState);
       setOnlineMulliganConfirmed(mulliganConfirmed);
+      setOnlineTurnEndsAt(turnEndsAt);
       setSelectedCardId(null);
       setSelectedAttackerId(null);
       setSelectedHeroPower(false);
@@ -503,9 +555,16 @@ export function App() {
     setOnlineError("");
     setOnlineRole(null);
     setOnlineMulliganConfirmed(false);
+    clearOnlineSession();
     lastTurnRef.current = "";
     const socket = connectOnlineSocket();
-    socket.emit("room:create", { faction: selectedFaction, deck, displayName: cleanPlayerName(playerName), friendCode: playerFriendCode });
+    socket.emit("room:create", {
+      clientId: onlineClientId,
+      faction: selectedFaction,
+      deck,
+      displayName: cleanPlayerName(playerName),
+      friendCode: playerFriendCode,
+    });
   }
 
   function joinOnlineRoom() {
@@ -514,9 +573,11 @@ export function App() {
     setOnlineError("");
     setOnlineRole(null);
     setOnlineMulliganConfirmed(false);
+    clearOnlineSession();
     lastTurnRef.current = "";
     const socket = connectOnlineSocket();
     socket.emit("room:join", {
+      clientId: onlineClientId,
       roomCode: onlineRoomCode,
       faction: selectedFaction,
       deck,
@@ -776,7 +837,10 @@ export function App() {
       <header className="topbar">
         <div className={`turn-chip ${state.activePlayer === "player" ? "is-you" : "is-them"}`}>
           <strong>{onlineMode ? `Du bist ${playerSeat}` : "Solo-Spiel"}</strong>
-          <span>{state.activePlayer === "player" ? "Du bist am Zug" : "Gegner ist am Zug"}</span>
+          <span>
+            {state.activePlayer === "player" ? "Du bist am Zug" : "Gegner ist am Zug"}
+            {onlineMode && turnSecondsLeft !== null ? ` · ${turnSecondsLeft}s` : ""}
+          </span>
         </div>
       </header>
 
@@ -867,6 +931,50 @@ function getOrCreateFriendCode() {
   const code = `NW-${suffix}`;
   localStorage.setItem("nebenwirkungen-friend-code", code);
   return code;
+}
+
+function getOrCreateClientId() {
+  const stored = localStorage.getItem("nebenwirkungen-client-id");
+  if (stored) return stored;
+  const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let suffix = "";
+  for (let index = 0; index < 32; index += 1) {
+    suffix += alphabet[Math.floor(Math.random() * alphabet.length)];
+  }
+  const id = `client_${suffix}`;
+  localStorage.setItem("nebenwirkungen-client-id", id);
+  return id;
+}
+
+function saveOnlineSession(session: OnlineSession) {
+  localStorage.setItem("nebenwirkungen-online-session", JSON.stringify(session));
+}
+
+function loadOnlineSession(): OnlineSession | null {
+  try {
+    const parsed = JSON.parse(localStorage.getItem("nebenwirkungen-online-session") ?? "null");
+    if (!parsed || typeof parsed !== "object") return null;
+    const roomCode = normalizeRoomCode(String(parsed.roomCode ?? ""));
+    const clientId = String(parsed.clientId ?? "").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 48);
+    if (!roomCode || !clientId) return null;
+    return {
+      clientId,
+      displayName: cleanPlayerName(String(parsed.displayName ?? "Spieler")),
+      friendCode: normalizeFriendCode(String(parsed.friendCode ?? "")),
+      roomCode,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function clearOnlineSession() {
+  localStorage.removeItem("nebenwirkungen-online-session");
+}
+
+function normalizeRoomCode(roomCode: string) {
+  const code = roomCode.trim().toUpperCase();
+  return /^[A-Z0-9]{4}$/.test(code) ? code : "";
 }
 
 function loadFriends(): FriendEntry[] {

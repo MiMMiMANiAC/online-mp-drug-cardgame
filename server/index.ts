@@ -18,7 +18,10 @@ type Seat = "player" | "opponent";
 type RoomStatus = "waiting" | "mulligan" | "playing";
 
 interface OnlinePlayer {
-  socketId: string;
+  clientId: string;
+  connected: boolean;
+  disconnectedAt?: number;
+  socketId?: string;
   faction: FactionId;
   deck: string[];
   displayName: string;
@@ -28,6 +31,9 @@ interface OnlinePlayer {
 interface RoomState {
   code: string;
   confirmedMulligans: Set<Seat>;
+  cleanupTimer?: ReturnType<typeof setTimeout>;
+  turnEndsAt?: number;
+  turnTimer?: ReturnType<typeof setTimeout>;
   player?: OnlinePlayer;
   opponent?: OnlinePlayer;
   status: RoomStatus;
@@ -46,6 +52,7 @@ interface RoomPayload {
 }
 
 interface JoinPayload {
+  clientId?: string;
   displayName?: string;
   friendCode?: string;
   roomCode?: string;
@@ -55,6 +62,8 @@ interface JoinPayload {
 
 const rooms = new Map<string, RoomState>();
 const socketRooms = new Map<string, string>();
+const ROOM_RECONNECT_TTL_MS = 10 * 60 * 1000;
+const TURN_LIMIT_MS = 90 * 1000;
 
 const rootDir = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const distDir = join(rootDir, "dist");
@@ -94,7 +103,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("room:create", (payload: JoinPayload) => {
-    leavePreviousRoom(socket);
+    leavePreviousRoom(socket, true);
     const code = uniqueRoomCode();
     const room: RoomState = {
       code,
@@ -109,7 +118,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("room:join", (payload: JoinPayload) => {
-    leavePreviousRoom(socket);
+    leavePreviousRoom(socket, true);
     const code = normalizeRoomCode(payload.roomCode);
     if (!code) {
       socket.emit("room:error", { message: "Raumcode fehlt." });
@@ -117,12 +126,16 @@ io.on("connection", (socket) => {
     }
 
     const room = rooms.get(code);
-    if (room) pruneDisconnectedPlayers(room);
     if (!room || !room.player) {
       socket.emit("room:error", { message: "Raum nicht gefunden." });
       return;
     }
-    if (room.opponent && room.opponent.socketId !== socket.id) {
+    const reconnectRole = roleForClient(room, normalizeClientId(payload.clientId));
+    if (reconnectRole) {
+      reconnectPlayer(socket, room, reconnectRole, payload);
+      return;
+    }
+    if (room.opponent) {
       socket.emit("room:error", { message: "Raum ist bereits voll." });
       return;
     }
@@ -132,6 +145,29 @@ io.on("connection", (socket) => {
     socketRooms.set(socket.id, code);
     startRoomIfReady(room);
     broadcastRoom(room);
+  });
+
+  socket.on("room:reconnect", (payload: JoinPayload) => {
+    const code = normalizeRoomCode(payload.roomCode);
+    const clientId = normalizeClientId(payload.clientId);
+    if (!code || !clientId) {
+      socket.emit("room:error", { message: "Reconnect fehlgeschlagen: Raum oder Spieler-ID fehlt." });
+      return;
+    }
+
+    const room = rooms.get(code);
+    if (!room) {
+      socket.emit("room:error", { message: "Raum nicht gefunden. Erstelle einen neuen Raum." });
+      return;
+    }
+
+    const role = roleForClient(room, clientId);
+    if (!role) {
+      socket.emit("room:error", { message: "Reconnect fehlgeschlagen: Dieser Spieler gehoert nicht zu diesem Raum." });
+      return;
+    }
+
+    reconnectPlayer(socket, room, role, payload);
   });
 
   socket.on("game:play-card", (payload: { roomCode?: string; cardId?: string; targetId?: string }) => {
@@ -188,6 +224,7 @@ io.on("connection", (socket) => {
     if (room.confirmedMulligans.has("player") && room.confirmedMulligans.has("opponent")) {
       room.state = markGameStarted(room.state);
       room.status = "playing";
+      scheduleTurnTimer(room);
     }
     broadcastRoom(room);
   });
@@ -209,7 +246,10 @@ function updateRoomState(socket: Socket, roomCode: string | undefined, apply: (s
     socket.emit("room:error", { message: "Du sitzt nicht in diesem Raum." });
     return;
   }
+  const previousActivePlayer = room.state.activePlayer;
   room.state = apply(room.state, role);
+  if (room.state.winner) clearTurnTimer(room);
+  else if (room.state.activePlayer !== previousActivePlayer) scheduleTurnTimer(room);
   socket.emit("game:debug", { message: `Server-Ergebnis: ${room.state.events[0]?.text ?? "keine Aenderung"}` });
   broadcastRoom(room);
 }
@@ -229,21 +269,23 @@ function startRoomIfReady(room: RoomState) {
 }
 
 function broadcastRoom(room: RoomState) {
-  if (room.player) emitRoomPayload(io.to(room.player.socketId), room, "player");
-  if (room.opponent) emitRoomPayload(io.to(room.opponent.socketId), room, "opponent");
+  if (room.player?.socketId) emitRoomPayload(io.to(room.player.socketId), room, "player");
+  if (room.opponent?.socketId) emitRoomPayload(io.to(room.opponent.socketId), room, "opponent");
   if (!room.state) return;
-  if (room.player) {
+  if (room.player?.socketId) {
     io.to(room.player.socketId).emit("game:state", {
       state: perspectiveFor(room.state, "player"),
       status: room.status,
       mulliganConfirmed: room.confirmedMulligans.has("player"),
+      turnEndsAt: room.turnEndsAt,
     });
   }
-  if (room.opponent) {
+  if (room.opponent?.socketId) {
     io.to(room.opponent.socketId).emit("game:state", {
       state: perspectiveFor(room.state, "opponent"),
       status: room.status,
       mulliganConfirmed: room.confirmedMulligans.has("opponent"),
+      turnEndsAt: room.turnEndsAt,
     });
   }
 }
@@ -264,7 +306,7 @@ function emitRoomPayload(target: Socket | ReturnType<typeof io.to>, room: RoomSt
   target.emit("room:update", payload);
 }
 
-function leavePreviousRoom(socket: Socket) {
+function leavePreviousRoom(socket: Socket, intentional = false) {
   const code = socketRooms.get(socket.id);
   socketRooms.delete(socket.id);
   if (!code) return;
@@ -274,13 +316,13 @@ function leavePreviousRoom(socket: Socket) {
 
   let changed = false;
   if (room.player?.socketId === socket.id) {
-    room.player = undefined;
-    room.confirmedMulligans.delete("player");
+    markPlayerDisconnected(room.player);
+    if (intentional && room.status === "waiting" && !room.state) room.player = undefined;
     changed = true;
   }
   if (room.opponent?.socketId === socket.id) {
-    room.opponent = undefined;
-    room.confirmedMulligans.delete("opponent");
+    markPlayerDisconnected(room.opponent);
+    if (intentional && room.status === "waiting" && !room.state) room.opponent = undefined;
     changed = true;
   }
 
@@ -290,32 +332,75 @@ function leavePreviousRoom(socket: Socket) {
   }
 
   if (changed) {
-    room.state = undefined;
-    room.status = room.player ? "waiting" : "waiting";
-    io.to(code).emit("room:event", { text: "Ein Spieler hat den Raum verlassen." });
+    scheduleRoomCleanup(room);
+    io.to(code).emit("room:event", { text: "Ein Spieler ist getrennt. Der Raum bleibt fuer Reconnect offen." });
     broadcastRoom(room);
   }
 }
 
-function pruneDisconnectedPlayers(room: RoomState) {
-  let changed = false;
-  if (room.player && !io.sockets.sockets.has(room.player.socketId)) {
-    socketRooms.delete(room.player.socketId);
-    room.player = undefined;
-    room.confirmedMulligans.delete("player");
-    changed = true;
-  }
-  if (room.opponent && !io.sockets.sockets.has(room.opponent.socketId)) {
-    socketRooms.delete(room.opponent.socketId);
-    room.opponent = undefined;
-    room.confirmedMulligans.delete("opponent");
-    changed = true;
-  }
-  if (!changed) return;
+function markPlayerDisconnected(player: OnlinePlayer) {
+  player.connected = false;
+  player.disconnectedAt = Date.now();
+  player.socketId = undefined;
+}
 
-  room.state = undefined;
-  room.status = "waiting";
-  if (!room.player && !room.opponent) rooms.delete(room.code);
+function reconnectPlayer(socket: Socket, room: RoomState, role: Seat, payload: JoinPayload) {
+  leavePreviousRoom(socket, true);
+  const player = role === "player" ? room.player : room.opponent;
+  if (!player) {
+    socket.emit("room:error", { message: "Reconnect fehlgeschlagen: Sitzplatz fehlt." });
+    return;
+  }
+
+  player.socketId = socket.id;
+  player.connected = true;
+  player.disconnectedAt = undefined;
+  player.displayName = normalizeDisplayName(payload.displayName) || player.displayName;
+  player.friendCode = normalizeFriendCode(payload.friendCode) || player.friendCode;
+  socket.join(room.code);
+  socketRooms.set(socket.id, room.code);
+  clearRoomCleanup(room);
+  socket.emit("room:event", { text: "Wieder mit dem Raum verbunden." });
+  broadcastRoom(room);
+}
+
+function scheduleRoomCleanup(room: RoomState) {
+  clearRoomCleanup(room);
+  room.cleanupTimer = setTimeout(() => {
+    const current = rooms.get(room.code);
+    if (!current) return;
+    const hasConnectedPlayer = Boolean(current.player?.connected || current.opponent?.connected);
+    if (hasConnectedPlayer) return;
+    clearTurnTimer(current);
+    rooms.delete(current.code);
+  }, ROOM_RECONNECT_TTL_MS);
+}
+
+function clearRoomCleanup(room: RoomState) {
+  if (!room.cleanupTimer) return;
+  clearTimeout(room.cleanupTimer);
+  room.cleanupTimer = undefined;
+}
+
+function scheduleTurnTimer(room: RoomState) {
+  clearTurnTimer(room);
+  if (!room.state || room.status !== "playing" || room.state.winner) return;
+  room.turnEndsAt = Date.now() + TURN_LIMIT_MS;
+  room.turnTimer = setTimeout(() => {
+    const current = rooms.get(room.code);
+    if (!current?.state || current.status !== "playing" || current.state.winner) return;
+    const side = current.state.activePlayer;
+    current.state = endTurnForSide(current.state, side);
+    if (current.state.winner) clearTurnTimer(current);
+    else scheduleTurnTimer(current);
+    broadcastRoom(current);
+  }, TURN_LIMIT_MS);
+}
+
+function clearTurnTimer(room: RoomState) {
+  if (room.turnTimer) clearTimeout(room.turnTimer);
+  room.turnTimer = undefined;
+  room.turnEndsAt = undefined;
 }
 
 function perspectiveFor(state: GameState, role: Seat): GameState {
@@ -340,6 +425,8 @@ function perspectiveFor(state: GameState, role: Seat): GameState {
 function makeOnlinePlayer(socket: Socket, payload: JoinPayload): OnlinePlayer {
   const faction = normalizeFaction(payload.faction);
   return {
+    clientId: normalizeClientId(payload.clientId) ?? socket.id,
+    connected: true,
     socketId: socket.id,
     faction,
     deck: validDeck(payload.deck) ? payload.deck : starterDecks[faction],
@@ -351,6 +438,13 @@ function makeOnlinePlayer(socket: Socket, payload: JoinPayload): OnlinePlayer {
 function roleForSocket(room: RoomState, socketId: string): Seat | null {
   if (room.player?.socketId === socketId) return "player";
   if (room.opponent?.socketId === socketId) return "opponent";
+  return null;
+}
+
+function roleForClient(room: RoomState, clientId: string | null): Seat | null {
+  if (!clientId) return null;
+  if (room.player?.clientId === clientId) return "player";
+  if (room.opponent?.clientId === clientId) return "opponent";
   return null;
 }
 
@@ -376,6 +470,11 @@ function normalizeDisplayName(displayName: string | undefined) {
 function normalizeFriendCode(friendCode: string | undefined) {
   const clean = friendCode?.trim().toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 12);
   return clean || "OHNE-CODE";
+}
+
+function normalizeClientId(clientId: string | undefined) {
+  const clean = clientId?.trim().replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 48);
+  return clean || null;
 }
 
 function uniqueRoomCode() {

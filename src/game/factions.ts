@@ -7,7 +7,7 @@ export const factions: FactionDefinition[] = [
     role: "Tempo, Boarddruck, Rausch",
     heroPower: {
       name: "Kurz im Spotlight",
-      text: "2 Cash: Beschwoere einen 2/1 Spotlight-Sprinter. Er kann sofort angreifen, verschwindet am Zugende. +1 Rausch.",
+      text: "4 Cash: Beschwoere einen 2/1 Spotlight-Sprinter. Er kann sofort angreifen, verschwindet am Zugende. +1 Rausch.",
     },
   },
   {
@@ -16,7 +16,7 @@ export const factions: FactionDefinition[] = [
     role: "Schutz, Stabilitaet, Risikosenkung",
     heroPower: {
       name: "Stabilisieren",
-      text: "2 Cash: Waehle dich oder eine eigene Person. Held: +2 Gesundheit und +2 Stabilitaet. Person: +2 HP.",
+      text: "3 Cash: Waehle dich oder eine eigene Person. Held: +2 Gesundheit und +2 Stabilitaet. Person: +2 HP.",
     },
   },
   {
@@ -25,7 +25,7 @@ export const factions: FactionDefinition[] = [
     role: "Cash, Risiko, Fahndung",
     heroPower: {
       name: "Schneller Deal",
-      text: "2 Cash: +3 Cash in diesem Zug. +1 Fahndung.",
+      text: "3 Cash: +3 Cash in diesem Zug. +1 Fahndung.",
     },
   },
   {

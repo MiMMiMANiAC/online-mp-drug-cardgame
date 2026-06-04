@@ -25,6 +25,23 @@ function sendUpdateStatus(status) {
   });
 }
 
+function formatUpdateError(error) {
+  const message = String(error?.message ?? error ?? "Unbekannter Fehler");
+  const statusMatch = message.match(/\b(401|403|404|429|500|502|503)\b/);
+  const status = statusMatch?.[1];
+
+  if (status === "404") return "Update-Fehler: Release nicht erreichbar. Repo/Release ist privat, fehlt oder noch nicht veroeffentlicht.";
+  if (status === "403") return "Update-Fehler: GitHub-Zugriff verweigert oder Rate-Limit erreicht.";
+  if (status === "401") return "Update-Fehler: GitHub-Zugriff nicht autorisiert.";
+  if (status === "429") return "Update-Fehler: Zu viele Anfragen. Bitte spaeter erneut versuchen.";
+  if (status) return `Update-Fehler: Server meldet ${status}.`;
+
+  if (/ENOTFOUND|EAI_AGAIN|getaddrinfo/i.test(message)) return "Update-Fehler: Keine Verbindung zu GitHub.";
+  if (/timeout|ETIMEDOUT/i.test(message)) return "Update-Fehler: Zeitueberschreitung beim Update-Check.";
+
+  return "Update-Fehler: Update-Check fehlgeschlagen.";
+}
+
 function setupAutoUpdater() {
   if (!autoUpdater) return;
 
@@ -63,7 +80,7 @@ function setupAutoUpdater() {
 
   autoUpdater.on("error", (error) => {
     sendUpdateStatus({
-      message: `Update-Fehler: ${error?.message ?? "Unbekannter Fehler"}`,
+      message: formatUpdateError(error),
       state: "error",
     });
   });
@@ -85,7 +102,7 @@ function checkForUpdates() {
 
   autoUpdater.checkForUpdates().catch((error) => {
     sendUpdateStatus({
-      message: `Update-Fehler: ${error?.message ?? "Unbekannter Fehler"}`,
+      message: formatUpdateError(error),
       state: "error",
     });
   });

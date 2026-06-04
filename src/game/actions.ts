@@ -5,6 +5,12 @@ import type { BoardCard, GameEvent, GameState, PlayerStats } from "./types";
 let nextId = 1;
 type Side = "player" | "opponent";
 
+export const HERO_POWER_COSTS = {
+  awareness: 3,
+  dealer: 3,
+  raver: 4,
+} as const;
+
 function keysFor(side: Side) {
   return side === "player"
     ? {
@@ -41,12 +47,13 @@ export function useHeroPowerForSide(state: GameState, side: Side, targetId?: str
   const { selfKey, ownBoardKey } = keysFor(side);
   const faction = side === "player" ? state.playerFaction : state.opponentFaction;
   const stats = state[selfKey];
+  const heroPowerCost = HERO_POWER_COSTS[faction as keyof typeof HERO_POWER_COSTS] ?? 3;
   if (stats.heroPowerUsed) return addEvent(state, "Heldenskill wurde in diesem Zug schon genutzt.", "warning");
-  if (stats.cash < 2) return addEvent(state, "Nicht genug Cash fuer den Heldenskill.", "warning");
+  if (stats.cash < heroPowerCost) return addEvent(state, "Nicht genug Cash fuer den Heldenskill.", "warning");
 
   let next: GameState = {
     ...state,
-    [selfKey]: { ...stats, cash: stats.cash - 2, heroPowerUsed: true },
+    [selfKey]: { ...stats, cash: stats.cash - heroPowerCost, heroPowerUsed: true },
   };
 
   if (faction === "raver") {

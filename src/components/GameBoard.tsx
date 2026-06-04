@@ -1,4 +1,5 @@
 import { useState, type DragEvent } from "react";
+import { HERO_POWER_COSTS } from "../game/actions";
 import { cardById } from "../game/cards";
 import { playableFactions } from "../game/factions";
 import { SELF_HERO_TARGET, canPlayCard, dangerLabel, rauschLabel, targetForCard, targetLabel } from "../game/rules";
@@ -53,6 +54,7 @@ export function GameBoard({
   const [inspectedCard, setInspectedCard] = useState<InspectedCard | null>(null);
   const centerCard = inspectedCard ?? (selectedCard ? { card: selectedCard } : null);
   const heroPower = playableFactions.find((faction) => faction.id === state.playerFaction)?.heroPower;
+  const heroPowerCost = HERO_POWER_COSTS[state.playerFaction as keyof typeof HERO_POWER_COSTS] ?? 3;
   const targetHint = selectedHeroPower
     ? "Waehle dich oder eine eigene Person fuer den Heldenskill"
     : selectedTarget
@@ -161,7 +163,7 @@ export function GameBoard({
             onClick={() => onUseHeroPower()}
             type="button"
           >
-            {heroPower?.name ?? "Heldenskill"}
+            {heroPower?.name ?? "Heldenskill"} ({heroPowerCost})
           </button>
           <button
             className="emergency-action-button"

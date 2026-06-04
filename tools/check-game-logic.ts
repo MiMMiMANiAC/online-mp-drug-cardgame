@@ -200,7 +200,7 @@ let dealerHeroPowerState = {
   player: { ...initialGameState.player, cash: 4, fahndungsdruck: 0 },
 };
 dealerHeroPowerState = useHeroPower(dealerHeroPowerState);
-assert.equal(dealerHeroPowerState.player.cash, 5, "Dealer-Heldenskill kostet 2 und gibt danach +3 Cash.");
+assert.equal(dealerHeroPowerState.player.cash, 4, "Dealer-Heldenskill kostet 3 und gibt danach +3 Cash.");
 assert.equal(dealerHeroPowerState.player.fahndungsdruck, 1, "Dealer-Heldenskill muss Fahndung erhoehen.");
 
 let multiplayerHeroPowerState = {
@@ -210,7 +210,7 @@ let multiplayerHeroPowerState = {
   opponent: { ...initialGameState.opponent, cash: 4, fahndungsdruck: 0 },
 };
 multiplayerHeroPowerState = useHeroPowerForSide(multiplayerHeroPowerState, "opponent");
-assert.equal(multiplayerHeroPowerState.opponent.cash, 5, "Multiplayer-Spieler-2-Heldenskill muss auf Gegnerseite wirken.");
+assert.equal(multiplayerHeroPowerState.opponent.cash, 4, "Multiplayer-Spieler-2-Heldenskill muss auf Gegnerseite wirken.");
 assert.equal(multiplayerHeroPowerState.opponent.heroPowerUsed, true, "Multiplayer-Spieler-2-Heldenskill muss verbraucht werden.");
 assert.equal(multiplayerHeroPowerState.opponent.fahndungsdruck, 1, "Multiplayer-Spieler-2-Heldenskill muss Fahndung erhoehen.");
 
