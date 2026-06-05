@@ -55,6 +55,7 @@ interface JoinPayload {
   clientId?: string;
   displayName?: string;
   friendCode?: string;
+  role?: Seat;
   roomCode?: string;
   faction?: FactionId;
   deck?: string[];
@@ -64,6 +65,7 @@ interface GameActionPayload {
   attackerId?: string;
   cardId?: string;
   clientId?: string;
+  role?: Seat;
   roomCode?: string;
   targetId?: string;
 }
@@ -180,6 +182,11 @@ io.on("connection", (socket) => {
 
     const role = roleForClient(room, clientId);
     if (!role) {
+      const requestedSeat = payload.role ? room[payload.role] : undefined;
+      if (payload.role && requestedSeat && !requestedSeat.connected && requestedSeat.friendCode === "RECOVERY") {
+        claimRecoveredSeat(socket, room, payload.role, payload);
+        return;
+      }
       socket.emit("room:error", { message: "Reconnect fehlgeschlagen: Dieser Spieler gehoert nicht zu diesem Raum." });
       return;
     }
@@ -246,6 +253,7 @@ io.on("connection", (socket) => {
       payload.roomCode,
       (state, role) => (payload.cardId ? playCardForSide(state, role, payload.cardId, payload.targetId) : state),
       payload.clientId,
+      payload.role,
     );
   });
 
@@ -255,6 +263,7 @@ io.on("connection", (socket) => {
       payload.roomCode,
       (state, role) => (payload.attackerId ? attackHeroForSide(state, role, payload.attackerId) : state),
       payload.clientId,
+      payload.role,
     );
   });
 
@@ -265,19 +274,20 @@ io.on("connection", (socket) => {
       (state, role) =>
         payload.attackerId && payload.targetId ? attackMinionForSide(state, role, payload.attackerId, payload.targetId) : state,
       payload.clientId,
+      payload.role,
     );
   });
 
   socket.on("game:end-turn", (payload: GameActionPayload) => {
-    updateRoomState(socket, payload.roomCode, (state, role) => endTurnForSide(state, role), payload.clientId);
+    updateRoomState(socket, payload.roomCode, (state, role) => endTurnForSide(state, role), payload.clientId, payload.role);
   });
 
   socket.on("game:hero-power", (payload: GameActionPayload) => {
-    updateRoomState(socket, payload.roomCode, (state, role) => useHeroPowerForSide(state, role, payload.targetId), payload.clientId);
+    updateRoomState(socket, payload.roomCode, (state, role) => useHeroPowerForSide(state, role, payload.targetId), payload.clientId, payload.role);
   });
 
   socket.on("game:emergency-action", (payload: GameActionPayload) => {
-    updateRoomState(socket, payload.roomCode, (state, role) => emergencyActionForSide(state, role), payload.clientId);
+    updateRoomState(socket, payload.roomCode, (state, role) => emergencyActionForSide(state, role), payload.clientId, payload.role);
   });
 
   socket.on("game:mulligan-confirm", (payload: { clientId?: string; roomCode?: string; selectedIndexes?: number[] }) => {
@@ -316,6 +326,7 @@ function updateRoomState(
   roomCode: string | undefined,
   apply: (state: GameState, role: Seat) => GameState,
   clientId?: string,
+  requestedRole?: Seat,
 ) {
   const code = socketRooms.get(socket.id) ?? normalizeRoomCode(roomCode);
   const room = code ? rooms.get(code) : undefined;
@@ -331,6 +342,12 @@ function updateRoomState(
   const reconnectRole = roleForClient(room, normalizeClientId(clientId));
   if (reconnectRole && room[reconnectRole]?.socketId !== socket.id) {
     reconnectPlayer(socket, room, reconnectRole, { clientId, roomCode: code ?? undefined });
+  }
+  if (!reconnectRole && requestedRole) {
+    const requestedSeat = room[requestedRole];
+    if (requestedSeat && !requestedSeat.connected && requestedSeat.friendCode === "RECOVERY") {
+      claimRecoveredSeat(socket, room, requestedRole, { clientId, roomCode: code ?? undefined });
+    }
   }
 
   if (!room.state) {

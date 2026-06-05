@@ -1,6 +1,6 @@
 {
   "name": "nebenwirkungen-cardgame",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Nebenwirkungen card game prototype",
   "author": "Nebenwirkungen",
   "private": true,
@@ -11,6 +11,7 @@
     "start": "tsx server/index.ts",
     "server": "tsx server/index.ts",
     "test:logic": "tsx tools/check-game-logic.ts",
+    "test:balance": "set PATH=%CD%\\.vendor\\node-v24.16.0-win-x64;%PATH%&&tsx tools/check-card-balance.ts",
     "build": "tsc && vite build",
     "desktop": "npm run build && electron desktop/main.cjs",
     "desktop:pack": "npm run build && electron-builder --win portable",

@@ -28,6 +28,7 @@ type OnlineSession = {
   clientId: string;
   displayName: string;
   friendCode: string;
+  role: OnlineRole;
   roomCode: string;
 };
 type OnlineStatePayload = {
@@ -352,7 +353,7 @@ export function App() {
   }
 
   function onlineActionPayload(extra: Record<string, string | undefined> = {}) {
-    return { clientId: onlineClientId, roomCode: onlineRoomCode, ...extra };
+    return { clientId: onlineClientId, role: onlineRole ?? undefined, roomCode: onlineRoomCode, ...extra };
   }
 
   function recoverOnlineRoom(socket: Socket, missingRoomCode?: string) {
@@ -539,6 +540,7 @@ export function App() {
         clientId: onlineClientId,
         displayName: cleanPlayerName(playerName),
         friendCode: playerFriendCode,
+        role: payload.role,
         roomCode: payload.roomCode,
       });
       const isDesktopFile = window.location.protocol === "file:";
@@ -996,11 +998,13 @@ function loadOnlineSession(): OnlineSession | null {
     if (!parsed || typeof parsed !== "object") return null;
     const roomCode = normalizeRoomCode(String(parsed.roomCode ?? ""));
     const clientId = String(parsed.clientId ?? "").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 48);
-    if (!roomCode || !clientId) return null;
+    const role = parsed.role === "player" || parsed.role === "opponent" ? parsed.role : null;
+    if (!roomCode || !clientId || !role) return null;
     return {
       clientId,
       displayName: cleanPlayerName(String(parsed.displayName ?? "Spieler")),
       friendCode: normalizeFriendCode(String(parsed.friendCode ?? "")),
+      role,
       roomCode,
     };
   } catch {
