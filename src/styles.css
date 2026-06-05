@@ -5220,3 +5220,124 @@ body {
     transform: scale(0.98);
   }
 }
+
+/* Clear deckbuilding rules and Mulligan readability. */
+.deck-rules span {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 8px;
+}
+
+.deck-rules span strong {
+  grid-row: span 2;
+  color: #f2c56b;
+  font-size: 0.9rem;
+}
+
+.deck-rules span b {
+  color: #f4efe2;
+  font-size: 0.72rem;
+  line-height: 1.05;
+}
+
+.deck-rules span small {
+  color: #bdb2a3;
+  font-size: 0.62rem;
+  line-height: 1.1;
+}
+
+.deck-rules span.is-ok strong,
+.deck-rules span.is-ok b {
+  color: #b9fff2;
+}
+
+.collection-card {
+  grid-template-rows: 118px auto auto auto 1fr;
+}
+
+.collection-card .card-statline {
+  position: static;
+  display: inline-flex;
+  width: max-content;
+  height: auto;
+  place-items: initial;
+  border: 1px solid rgba(242, 197, 107, 0.42);
+  border-radius: 999px;
+  padding: 3px 7px;
+  color: #ffe2a0;
+  background: rgba(0, 0, 0, 0.42);
+  font-size: 0.68rem;
+  font-weight: 950;
+}
+
+.collection-card mark {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  border-radius: 999px;
+  padding: 4px 7px;
+  color: #ffe7b0;
+  background: rgba(170, 45, 36, 0.88);
+  font-size: 0.64rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.mulligan-header span {
+  color: #72dfc8;
+  font-size: 0.82rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.mulligan-card {
+  grid-template-rows: auto auto auto 132px auto 1fr;
+}
+
+.mulligan-card > em {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  border-radius: 999px;
+  padding: 5px 8px;
+  color: #16100a;
+  background: #f2c56b;
+  font-size: 0.66rem;
+  font-style: normal;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.mulligan-card.is-marked > em {
+  color: #fff5c9;
+  background: #e44539;
+}
+
+.mulligan-card.is-marked::after {
+  content: "";
+  inset: auto 10px 10px 10px;
+  height: 5px;
+  border-radius: 999px;
+  background: #e44539;
+}
+
+.mulligan-card .mulligan-kind {
+  width: max-content;
+  border-radius: 999px;
+  padding: 3px 8px;
+  color: #72dfc8;
+  background: rgba(0, 0, 0, 0.42);
+  font-size: 0.66rem;
+  font-weight: 950;
+}
+
+.mulligan-card .mulligan-stats {
+  width: max-content;
+  border: 1px solid rgba(242, 197, 107, 0.46);
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: #ffe2a0;
+  background: rgba(0, 0, 0, 0.48);
+  font-size: 0.75rem;
+  font-weight: 950;
+}

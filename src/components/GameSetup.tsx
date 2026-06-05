@@ -68,6 +68,13 @@ export function GameSetup({
   const deckValidation = validateDeck(deck, selectedFaction);
   const previewCard = previewCardId ? cardById.get(previewCardId) : null;
   const deckStats = getDeckStats(deck, selectedFaction);
+  const deckRules = [
+    { label: "30 Karten", detail: "genau", value: `${deck.length}/30`, ok: deck.length === 30 },
+    { label: "Klassenkarten", detail: "mind. 12", value: `${deckStats.classCards}/12`, ok: deckStats.classCards >= 12 },
+    { label: "Personen", detail: "mind. 10", value: `${deckStats.persons}/10`, ok: deckStats.persons >= 10 },
+    { label: "Fruehe Karten", detail: "Kosten 1-3, mind. 10", value: `${deckStats.earlyCards}/10`, ok: deckStats.earlyCards >= 10 },
+    { label: "Risiken", detail: "Rausch, Fahndung, Abhaengigkeit", value: `${deckStats.riskAxes}/3`, ok: deckStats.riskAxes >= 3 },
+  ];
 
   return (
     <main className="setup-shell">
@@ -119,8 +126,8 @@ export function GameSetup({
           </div>
           <p className="collection-note">
             {collectionTab === "class"
-              ? `12 ${selected.name}-Karten. Mindestens 12 Klassenkarten muessen ins Deck.`
-              : "Neutrale Karten bringen Draw, Cash und alle Risikoachsen in jedes Deck."}
+              ? `${selected.name}-Karten zaehlen fuer die Klassenpflicht. Du darfst trotzdem neutrale Karten dazumischen.`
+              : "Neutrale Karten bringen Draw, Cash und Risikoachsen. Ohne sie fehlen oft Fahndung oder Abhaengigkeit."}
           </p>
           <div className="collection-grid">
             {visibleCards
@@ -143,8 +150,14 @@ export function GameSetup({
                     {card.image ? <img alt="" src={card.image} /> : <i>{card.kind}</i>}
                     <b>{card.kind}</b>
                     <strong>{card.name}</strong>
+                    {card.kind === "person" ? (
+                      <span className="card-statline">
+                        {card.attack ?? 0} AP / {card.stability ?? 0} HP
+                      </span>
+                    ) : null}
                     <small>{card.effect}</small>
                     <em>{copies}/2</em>
+                    {!canAdd ? <mark>{deck.length >= 30 ? "Deck voll" : "2 Kopien"}</mark> : null}
                   </button>
                 );
               })}
@@ -166,11 +179,13 @@ export function GameSetup({
             </button>
           </div>
           <div className="deck-rules" aria-label="Deckregeln">
-            <span className={deck.length === 30 ? "is-ok" : ""}>30 Karten</span>
-            <span className={deckStats.classCards >= 12 ? "is-ok" : ""}>{deckStats.classCards}/12 Klasse</span>
-            <span className={deckStats.persons >= 10 ? "is-ok" : ""}>{deckStats.persons}/10 Personen</span>
-            <span className={deckStats.earlyCards >= 10 ? "is-ok" : ""}>{deckStats.earlyCards}/10 frueh</span>
-            <span className={deckStats.riskAxes >= 3 ? "is-ok" : ""}>{deckStats.riskAxes}/3 Risiken</span>
+            {deckRules.map((rule) => (
+              <span className={rule.ok ? "is-ok" : ""} key={rule.label}>
+                <strong>{rule.value}</strong>
+                <b>{rule.label}</b>
+                <small>{rule.detail}</small>
+              </span>
+            ))}
           </div>
           <ol className="deck-list">
             {deck.map((cardId, index) => {
@@ -266,7 +281,10 @@ export function GameSetup({
             {onlineStatus ? <p>{onlineStatus}</p> : null}
             {onlineError ? <em>{onlineError}</em> : null}
           </div>
-          <p>Waehle Karten deiner Klasse plus neutrale Karten. Jedes Deck braucht Rausch, Fahndung und Abhaengigkeit. Maximal 2 Kopien pro Karte.</p>
+          <p>
+            Deckbau-Regeln: Waehle Karten deiner Klasse plus neutrale Karten. Das Deck ist erst spielbereit, wenn alle
+            Regelkaesten gruen sind. Maximal 2 Kopien pro Karte.
+          </p>
           {previewCard ? <DeckPreview card={previewCard} /> : null}
         </aside>
       </section>
