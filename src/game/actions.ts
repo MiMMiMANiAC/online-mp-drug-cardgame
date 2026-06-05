@@ -235,10 +235,18 @@ export function attackMinionForSide(state: GameState, side: Side, attackerId: st
   if (!attacker || !target) return state;
   if (!attacker.canAttack || attacker.exhausted) return addEvent(state, "Diese Person kann noch nicht angreifen.", "warning");
 
-  const attackerAfter = { ...attacker, health: attacker.health - target.attack, exhausted: true, canAttack: false };
-  const targetAfter = { ...target, health: target.health - attacker.attack };
-  const attackerDef = cardById.get(attacker.cardId);
   const targetDef = cardById.get(target.cardId);
+  const attackerAttackPenalty = target.cardId === "awareness_deeskalation" && attacker.attack >= 3 ? 1 : 0;
+  const attackerDamage = Math.max(0, attacker.attack - attackerAttackPenalty);
+  const attackerAfter = {
+    ...attacker,
+    attack: Math.max(0, attacker.attack - attackerAttackPenalty),
+    health: attacker.health - target.attack,
+    exhausted: true,
+    canAttack: false,
+  };
+  const targetAfter = { ...target, health: target.health - attackerDamage };
+  const attackerDef = cardById.get(attacker.cardId);
 
   let next: GameState = {
     ...state,
@@ -265,7 +273,7 @@ export function attackMinionForSide(state: GameState, side: Side, attackerId: st
   return checkWinner(
     addEvent(
       next,
-      `${attackerDef?.name ?? "Person"} greift ${targetDef?.name ?? "Ziel"} an: ${attacker.attack} / ${target.attack} Schaden.${deathText}`,
+      `${attackerDef?.name ?? "Person"} greift ${targetDef?.name ?? "Ziel"} an: ${attackerDamage} / ${target.attack} Schaden.${attackerAttackPenalty ? " Tuerteam senkt den Angriff um 1." : ""}${deathText}`,
       "danger",
     ),
   );
@@ -411,14 +419,9 @@ function runEndOfTurnRisks(state: GameState, side: "player" | "opponent"): GameS
   const actor = side === "player" ? "Dein" : "Gegnerischer";
   let next: GameState = state;
 
-  if (board.some((card) => card.cardId === "awareness_aufsicht") && stats.stability <= 5) {
-    stats.stability = Math.min(30, stats.stability + 1);
-    next = addEvent({ ...next, [statsKey]: stats }, `${actor} Aufsicht stabilisiert um 1.`, "recovery");
-  }
-
-  if (board.some((card) => card.cardId === "awareness_streetworker")) {
-    stats = reduceHighestRisk(stats);
-    next = addEvent({ ...next, [statsKey]: stats }, `${actor} Streetworker reduziert den hoechsten Risikowert.`, "recovery");
+  if (board.some((card) => card.cardId === "awareness_aufsicht") && stats.health <= 20) {
+    stats.health = Math.min(30, stats.health + 1);
+    next = addEvent({ ...next, [statsKey]: stats }, `${actor} Ruhiger Blick heilt 1 Gesundheit.`, "recovery");
   }
 
   if (board.some((card) => card.cardId === "raver_ueberdreht")) {
@@ -621,13 +624,8 @@ function applySpellLikeEffect(state: GameState, cardId: string, side: "player" |
       self.rausch = Math.min(10, self.rausch + 1);
       break;
     case "raver_druckwelle":
-    case "awareness_deeskalation":
       enemyBoard = buffTarget(enemyBoard, targetId, -2, 0);
       if (cardId === "raver_druckwelle") self.rausch = Math.min(10, self.rausch + 1);
-      if (cardId === "awareness_deeskalation") {
-        self.fahndungsdruck = Math.max(0, self.fahndungsdruck - 1);
-        enemy.fahndungsdruck = Math.max(0, enemy.fahndungsdruck - 1);
-      }
       break;
     case "neutral_ueberforderung":
       if (ownBoard.some((card) => card.instanceId === targetId)) {
@@ -668,7 +666,7 @@ function applySpellLikeEffect(state: GameState, cardId: string, side: "player" |
       break;
     }
     case "awareness_wasser":
-      if (targetId === SELF_HERO_TARGET) self.stability = Math.min(30, self.stability + 2);
+      if (targetId === SELF_HERO_TARGET) self.health = Math.min(30, self.health + 2);
       else ownBoard = healTarget(ownBoard, targetId, 2);
       self.rausch = Math.max(0, self.rausch - 1);
       break;
@@ -677,26 +675,24 @@ function applySpellLikeEffect(state: GameState, cardId: string, side: "player" |
       else self.abhaengigkeit = Math.max(0, self.abhaengigkeit - 2);
       return drawCard({ ...state, [selfKey]: self, [enemyKey]: enemy, [ownBoardKey]: ownBoard, [enemyBoardKey]: enemyBoard }, side);
     case "awareness_schadensbegrenzung":
-      enemyBoard = resetTargetBuff(enemyBoard, targetId);
-      self.fahndungsdruck = Math.max(0, self.fahndungsdruck - 1);
+      enemyBoard = buffTarget(enemyBoard, targetId, -2, 0);
       break;
-    case "awareness_abschirmen":
-      ownBoard = buffAll(ownBoard, 0, 2);
-      self.stability = Math.min(30, self.stability + 2);
+    case "awareness_abschirmen": {
+      const wasCritical = self.health <= 15;
+      self.health = Math.min(30, self.health + 4);
+      if (wasCritical) return drawCard({ ...state, [selfKey]: self, [enemyKey]: enemy, [ownBoardKey]: ownBoard, [enemyBoardKey]: enemyBoard }, side);
       break;
+    }
     case "awareness_intervention":
-      enemyBoard = resetTargetBuff(enemyBoard, targetId).map((card, index) =>
+      enemyBoard = enemyBoard.map((card, index) =>
         matchesTarget(card, targetId, index) ? { ...card, canAttack: false, exhausted: true } : card,
       );
-      break;
-    case "awareness_klarer_kopf":
-      self.rausch = 0;
-      self.abhaengigkeit = Math.max(0, self.abhaengigkeit - 2);
-      self.stability = Math.min(30, self.stability + 4);
+      self.fahndungsdruck = Math.max(0, self.fahndungsdruck - 1);
       break;
     case "awareness_therapieplatz":
-      if (self.stability >= 30) self.abhaengigkeit = Math.max(0, self.abhaengigkeit - 1);
-      else self.stability = Math.min(30, self.stability + 2);
+      if (self.health >= 30) self.abhaengigkeit = Math.max(0, self.abhaengigkeit - 1);
+      else self.health = Math.min(30, self.health + 2);
+      self.stability = Math.min(30, self.stability + 2);
       break;
     case "awareness_rueckzugsraum":
       self.rausch = Math.max(0, self.rausch - 1);
@@ -878,6 +874,11 @@ function applyPersonOnPlay(state: GameState, cardId: string, side: "player" | "o
       self.cash = Math.min(10, self.cash + 1);
       if (self.fahndungsdruck >= 6) board = buffLast(board, 0, -2).filter((card) => card.health > 0);
       break;
+    case "awareness_streetworker":
+      return { ...state, [selfKey]: reduceHighestRisk(self), [boardKey]: board };
+    case "awareness_klarer_kopf":
+      self.health = Math.min(30, self.health + 4);
+      break;
     case "neutral_kontaktperson":
       if (board.length <= 1) return drawCard({ ...state, [selfKey]: self, [boardKey]: board }, side);
       break;
@@ -985,12 +986,15 @@ function applyAttackTriggers(state: GameState, cardId: string, side: "player" | 
 
 function applyOwnDamageTriggers(state: GameState, side: "player" | "opponent"): GameState {
   const boardKey = side === "player" ? "playerBoard" : "opponentBoard";
-  const statsKey = side === "player" ? "player" : "opponent";
   if (!state[boardKey].some((card) => card.cardId === "awareness_krisenhelferin")) return state;
-  const stats = state[statsKey];
+  let healed = false;
   return {
     ...state,
-    [statsKey]: { ...stats, stability: Math.min(30, stats.stability + 1) },
+    [boardKey]: state[boardKey].map((card) => {
+      if (healed || card.health <= 0 || card.cardId === "awareness_krisenhelferin") return card;
+      healed = true;
+      return { ...card, health: card.health + 1 };
+    }),
   };
 }
 
