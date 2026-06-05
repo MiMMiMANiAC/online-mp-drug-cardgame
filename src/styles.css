@@ -5221,34 +5221,26 @@ body {
   }
 }
 
-/* Clear deckbuilding rules and Mulligan readability. */
-.deck-rules span {
+/* Clear deckbuilding and Mulligan readability. */
+.deck-freebuild-note {
   display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 2px 8px;
+  gap: 4px;
+  border: 1px solid rgba(114, 223, 200, 0.35);
+  border-radius: 8px;
+  padding: 9px;
+  background: rgba(114, 223, 200, 0.08);
 }
 
-.deck-rules span strong {
-  grid-row: span 2;
-  color: #f2c56b;
-  font-size: 0.9rem;
-}
-
-.deck-rules span b {
-  color: #f4efe2;
-  font-size: 0.72rem;
-  line-height: 1.05;
-}
-
-.deck-rules span small {
-  color: #bdb2a3;
-  font-size: 0.62rem;
-  line-height: 1.1;
-}
-
-.deck-rules span.is-ok strong,
-.deck-rules span.is-ok b {
+.deck-freebuild-note strong {
   color: #b9fff2;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+}
+
+.deck-freebuild-note span {
+  color: #d8cdbc;
+  font-size: 0.72rem;
+  line-height: 1.25;
 }
 
 .collection-card {
@@ -5290,16 +5282,32 @@ body {
   text-transform: uppercase;
 }
 
+.mulligan-shell {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(242, 197, 107, 0.22), transparent 34rem),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.68), rgba(0, 0, 0, 0.88)),
+    url("../assets/board/club-background.png") center / cover no-repeat;
+}
+
+.mulligan-cards {
+  gap: 20px;
+}
+
 .mulligan-card {
-  grid-template-rows: auto auto auto 132px auto 1fr;
+  width: 220px;
+  height: 320px;
+  grid-template-rows: auto auto 136px auto minmax(0, 1fr);
+  gap: 7px;
+  padding: 13px;
+  background: linear-gradient(180deg, rgba(44, 55, 61, 0.98), rgba(17, 21, 24, 0.98));
 }
 
 .mulligan-card > em {
   position: absolute;
-  right: 10px;
-  top: 10px;
+  right: 12px;
+  bottom: 12px;
   border-radius: 999px;
-  padding: 5px 8px;
+  padding: 6px 9px;
   color: #16100a;
   background: #f2c56b;
   font-size: 0.66rem;
@@ -5311,6 +5319,17 @@ body {
 .mulligan-card.is-marked > em {
   color: #fff5c9;
   background: #e44539;
+}
+
+.mulligan-card strong {
+  min-width: 0;
+  padding-right: 38px;
+  padding-left: 38px;
+  overflow: hidden;
+  font-size: 1rem;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mulligan-card.is-marked::after {
@@ -5331,6 +5350,11 @@ body {
   font-weight: 950;
 }
 
+.mulligan-card div {
+  height: 136px;
+  line-height: 136px;
+}
+
 .mulligan-card .mulligan-stats {
   width: max-content;
   border: 1px solid rgba(242, 197, 107, 0.46);
@@ -5340,4 +5364,24 @@ body {
   background: rgba(0, 0, 0, 0.48);
   font-size: 0.75rem;
   font-weight: 950;
+}
+
+.mulligan-card p {
+  min-height: 0;
+  padding-right: 56px;
+  -webkit-line-clamp: 3;
+  font-size: 0.74rem;
+  line-height: 1.22;
+}
+
+.mulligan-actions {
+  width: min(560px, 100%);
+  grid-template-columns: 150px 1fr 180px;
+  align-items: center;
+  justify-self: center;
+}
+
+.mulligan-actions button {
+  font-size: 0.8rem;
+  line-height: 1.15;
 }

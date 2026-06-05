@@ -65,16 +65,8 @@ export function GameSetup({
   const visibleCards = cards.filter(
     (card) => (collectionTab === "class" ? card.faction === selectedFaction : card.faction === "neutral"),
   );
-  const deckValidation = validateDeck(deck, selectedFaction);
+  const deckValidation = validateDeck(deck);
   const previewCard = previewCardId ? cardById.get(previewCardId) : null;
-  const deckStats = getDeckStats(deck, selectedFaction);
-  const deckRules = [
-    { label: "30 Karten", detail: "genau", value: `${deck.length}/30`, ok: deck.length === 30 },
-    { label: "Klassenkarten", detail: "mind. 12", value: `${deckStats.classCards}/12`, ok: deckStats.classCards >= 12 },
-    { label: "Personen", detail: "mind. 10", value: `${deckStats.persons}/10`, ok: deckStats.persons >= 10 },
-    { label: "Fruehe Karten", detail: "Kosten 1-3, mind. 10", value: `${deckStats.earlyCards}/10`, ok: deckStats.earlyCards >= 10 },
-    { label: "Risiken", detail: "Rausch, Fahndung, Abhaengigkeit", value: `${deckStats.riskAxes}/3`, ok: deckStats.riskAxes >= 3 },
-  ];
 
   return (
     <main className="setup-shell">
@@ -126,8 +118,8 @@ export function GameSetup({
           </div>
           <p className="collection-note">
             {collectionTab === "class"
-              ? `${selected.name}-Karten zaehlen fuer die Klassenpflicht. Du darfst trotzdem neutrale Karten dazumischen.`
-              : "Neutrale Karten bringen Draw, Cash und Risikoachsen. Ohne sie fehlen oft Fahndung oder Abhaengigkeit."}
+              ? `${selected.name}-Karten fuer deinen eigenen Spielstil. Du kannst frei mischen.`
+              : "Neutrale Karten bringen Draw, Cash, Angriff und Risikoachsen in jedes Deck."}
           </p>
           <div className="collection-grid">
             {visibleCards
@@ -178,14 +170,9 @@ export function GameSetup({
               Leeren
             </button>
           </div>
-          <div className="deck-rules" aria-label="Deckregeln">
-            {deckRules.map((rule) => (
-              <span className={rule.ok ? "is-ok" : ""} key={rule.label}>
-                <strong>{rule.value}</strong>
-                <b>{rule.label}</b>
-                <small>{rule.detail}</small>
-              </span>
-            ))}
+          <div className="deck-freebuild-note" aria-label="Freier Deckbau">
+            <strong>Freier Deckbau</strong>
+            <span>Stelle dein Deck ohne Klassen-, Personen- oder Risiko-Pflicht zusammen.</span>
           </div>
           <ol className="deck-list">
             {deck.map((cardId, index) => {
@@ -282,8 +269,8 @@ export function GameSetup({
             {onlineError ? <em>{onlineError}</em> : null}
           </div>
           <p>
-            Deckbau-Regeln: Waehle Karten deiner Klasse plus neutrale Karten. Das Deck ist erst spielbereit, wenn alle
-            Regelkaesten gruen sind. Maximal 2 Kopien pro Karte.
+            Waehle Karten deiner Klasse plus neutrale Karten. Es gibt keine Pflicht fuer Klassenkarten, Personen,
+            fruehe Karten oder Risikoachsen.
           </p>
           {previewCard ? <DeckPreview card={previewCard} /> : null}
         </aside>
@@ -302,7 +289,7 @@ export function deckForFaction(faction: FactionId) {
   return [...starterDecks.raver];
 }
 
-function validateDeck(deck: string[], faction: FactionId) {
+function validateDeck(deck: string[]) {
   if (deck.length !== 30) return { valid: false, message: "exakt 30 Karten noetig" };
 
   const copyCounts = new Map<string, number>();
@@ -313,39 +300,7 @@ function validateDeck(deck: string[], faction: FactionId) {
     return { valid: false, message: "max. 2 Kopien pro Karte" };
   }
 
-  const classCards = deck.filter((cardId) => cardById.get(cardId)?.faction === faction).length;
-  if (classCards < 12) return { valid: false, message: "mind. 12 Klassenkarten" };
-
-  const persons = deck.filter((cardId) => cardById.get(cardId)?.kind === "person").length;
-  if (persons < 10) return { valid: false, message: "mind. 10 Personen" };
-
-  const earlyCards = deck.filter((cardId) => {
-    const cost = cardById.get(cardId)?.cost ?? 99;
-    return cost >= 1 && cost <= 3;
-  }).length;
-  if (earlyCards < 10) return { valid: false, message: "mind. 10 Karten mit Kosten 1-3" };
-
-  const risks = riskAxes(deck);
-  if (risks < 3) return { valid: false, message: "Rausch, Fahndung und Abhaengigkeit noetig" };
-
   return { valid: true, message: "spielbereit" };
-}
-
-function getDeckStats(deck: string[], faction: FactionId) {
-  return {
-    classCards: deck.filter((cardId) => cardById.get(cardId)?.faction === faction).length,
-    persons: deck.filter((cardId) => cardById.get(cardId)?.kind === "person").length,
-    earlyCards: deck.filter((cardId) => {
-      const cost = cardById.get(cardId)?.cost ?? 99;
-      return cost >= 1 && cost <= 3;
-    }).length,
-    riskAxes: riskAxes(deck),
-  };
-}
-
-function riskAxes(deck: string[]) {
-  const tags = new Set(deck.flatMap((cardId) => cardById.get(cardId)?.tags ?? []));
-  return Number(tags.has("rausch")) + Number(tags.has("fahndung")) + Number(tags.has("abhaengigkeit"));
 }
 
 function DeckPreview({ card }: { card: NonNullable<ReturnType<typeof cardById.get>> }) {
